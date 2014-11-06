@@ -35,19 +35,10 @@ def accessValid(accessLayer, hydrolinesLayer, awid):
     sql = "{} = '{}'".format(sqlStub, awid)
 
     # select takeout by awid
-    arcpy.SelectLayerByAttribute_management(
-        in_layer_or_view=accessLayer,
-        selection_type='NEW_SELECTION',
-        where_clause=sql
-    )
+    arcpy.SelectLayerByAttribute_management(accessLayer, 'NEW_SELECTION', sql)
 
     # select by location to see if conincident with hydrolines
-    arcpy.SelectLayerByLocation_management(
-        in_layer=hydrolinesLayer,
-        overlap_type='INTERSECT',
-        select_features=accessLayer,
-        selection_type='NEW_SELECTION'
-    )
+    arcpy.SelectLayerByLocation_management(hydrolinesLayer, 'INTERSECT', accessLayer, 'NEW_SELECTION')
 
     # if concident, one hydroline feature should be selected and we return true
     if len(arcpy.Describe(hydrolinesLayer).FIDSet):
@@ -134,12 +125,7 @@ def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspac
     )[0]
 
     # add awid field to feature class
-    arcpy.AddField_management(
-        in_table=outFcValid,
-        field_name='awid',
-        field_type='TEXT',
-        field_length='8'
-    )
+    arcpy.AddField_management(outFcValid, 'awid', 'TEXT', '8')
 
     # create insert cursor for the lines feature class
     insertCursor = arcpy.da.SearchCursor(outFcValid, 'awid', 'SHAPE@')
@@ -163,14 +149,10 @@ def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspac
         for access in (putinLyr, takeoutLyr):
 
             # select putin by awid
-            arcpy.SelectLayerByAttribute_management(
-                in_layer_or_view=access,
-                selection_type='NEW_SELECTION',
-                where_clause=sql
-            )
+            arcpy.SelectLayerByAttribute_management(access, 'NEW_SELECTION', sql)
 
         # get the geometry for the awid
-        reachGeometry = getLineGeometry(putinLyr, takeoutLyr, geometricNetwork)
+        reachGeometry = getReachGeometry(putinLyr, takeoutLyr, geometricNetwork)
 
         # insert the awid into the new feautre class
         insertCursor.insertRow(awid, reachGeometry)
