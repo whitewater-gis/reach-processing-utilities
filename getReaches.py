@@ -43,14 +43,14 @@ def accessValid(accessLayer, hydrolinesLayer, awid):
 
     # select by location to see if conincident with hydrolines
     arcpy.SelectLayerByLocation_management(
-        in_layer=accessLayer,
+        in_layer=hydrolinesLayer,
         overlap_type='INTERSECT',
-        select_features=hydrolinesLayer,
-        selection_type='SUBSET_SELECTION'
+        select_features=accessLayer,
+        selection_type='NEW_SELECTION'
     )
 
-    # if concident, one feature should still be selected and we return true
-    if len(arcpy.Describe(accessLayer).FIDSet):
+    # if concident, one hydroline feature should be selected and we return true
+    if len(arcpy.Describe(hydrolinesLayer).FIDSet):
         return True
 
     # if nothing is selected, it is not coincident, and return false
@@ -73,14 +73,20 @@ def getValidReaches(awidList, putins, takeouts, hydrolines):
             # add the awid to the valid list
             validAwidList.append(awid)
 
+    #TODO: remove after testing
+    arcpy.AddMessage('Valid AWID\'s\n{}'.format(validAwidList))
+
     # return the list...sorted because I like things organized
     return sorted(validAwidList)
 
-def getLineGeometry(putin, takeout, hydrolines, geometricNetwork):
+def getReachGeometry(putin, takeout, geometricNetwork):
     """
-    Select and extract geometry using a putin and takeout from hydrolines.
+    Extract the geometry for a reach.
+    @putin - layer with a single putin selected by awid
+    @takeout = layer with a single takeout selected by awid
+    @geometricNetwork - NHD geometric network
     """
-    # get the hydroline using the trace function
+    # trace from the putin to the takeout
     traceLayer = arcpy.TraceGeometricNetwork_management(
         in_geometric_network=geometricNetwork,
         out_network_layer="Downstream",
@@ -89,21 +95,28 @@ def getLineGeometry(putin, takeout, hydrolines, geometricNetwork):
         in_barriers=takeout
     )[0]
 
-    # Trace returns a list with three layer objects, the first the group layer,
-    # the second a layer for junctions and the third is the traced edge. We are
-    # interested in the edge
-    reachSegments = arcpy.mapping.ListLayers(traceLayer)[2]
+    # trace returns a group layer with the joints and edges selected. get the layer for the selected edges
+    lineLyr = arcpy.mapping.ListLayers(traceLayer)[2]
 
-    # dissolve the selected segments into one reach
-    thisReach = arcpy.Dissolve_management(reachSegments, 'in_memory/thisReach')
+    # the last line segment does not get selected, so pick it up with this command
+    arcpy.SelectLayerByLocation_management(lineLyr, "INTERSECT", takeout, selection_type="ADD_TO_SELECTION")
 
-    # use a search cursor in a list comprehension to extract the geometry
-    reachGeometry = [row[0] for row in arcpy.da.SearchCursor(thisReach, 'SHAPE@')][0]
+    # dissolve into single feature
+    dissolveFc = arcpy.Dissolve_management(lineLyr, 'in_memory/tempDissolveLine')[0]
 
-    # return the geometery
-    return reachGeometry
+    # split at the putin
+    split01Fc = arcpy.SplitLineAtPoint_management(dissolveFc, putin, 'in_memory/tempPiLine')[0]
 
-def getAwidReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspace):
+    # split at the takeout
+    reachFc = arcpy.SplitLineAtPoint_management(split01Fc, takeout, 'in_memory/tempPiToLine')[0]
+
+    # trim off dangles upstream and downstream of the identified reach
+    arcpy.TrimLine_edit(reachFc)
+
+    # return the geometry object
+    return [row[0] for row in arcpy.da.SearchCursor(reachFc, 'SHAPE@')][0]
+
+def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspace):
     """
     Get valid AW reaches.
     """
@@ -141,28 +154,23 @@ def getAwidReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWork
         wksp = os.path.dirname(arcpy.Describe(putinLyr).catalogPath)
 
         # add field delimters based on the source workspace
-        sqlStub = arcpy.AddFieldDelimeters(wksp, 'awid')
+        sqlStub = arcpy.AddFieldDelimiters(wksp, 'awid')
 
         # finish the sql string
         sql = "{} = '{}'".format(sqlStub, awid)
 
-        # select putin by awid
-        putinPoint = arcpy.SelectLayerByAttribute_management(
-            in_layer_or_view=putinLyr,
-            selection_type='NEW_SELECTION',
-            where_clause=sql
-        )[0]
+        # select both the putin and the takeout
+        for access in (putinLyr, takeoutLyr):
 
-
-        # select takeout by awid
-        takeoutPoint = arcpy.SelectLayerByAttribute_management(
-            in_layer_or_view=takeoutLyr,
-            selection_type='NEW_SELECTION',
-            where_clause=sql
-        )[0]
+            # select putin by awid
+            arcpy.SelectLayerByAttribute_management(
+                in_layer_or_view=access,
+                selection_type='NEW_SELECTION',
+                where_clause=sql
+            )
 
         # get the geometry for the awid
-        reachGeometry = getLineGeometry(putinPoint, takeoutPoint, hydrolineLyr, geometricNetwork)
+        reachGeometry = getLineGeometry(putinLyr, takeoutLyr, geometricNetwork)
 
         # insert the awid into the new feautre class
         insertCursor.insertRow(awid, reachGeometry)
