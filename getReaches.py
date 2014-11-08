@@ -1,6 +1,7 @@
 # import modules
 import arcpy
-import os
+import os.path
+
 
 def cleanup(putins, takeouts, hydrolines, snapDistanceFeet):
     """
@@ -20,6 +21,7 @@ def cleanup(putins, takeouts, hydrolines, snapDistanceFeet):
     # snap the takeouts to the putins
     arcpy.Snap_edit(takeouts, putinSnapString)
 
+
 def accessValid(accessLayer, hydrolinesLayer, awid):
     """
     Evaluate the validity of the access (takeout or putin) based on the awid.
@@ -38,7 +40,12 @@ def accessValid(accessLayer, hydrolinesLayer, awid):
     arcpy.SelectLayerByAttribute_management(accessLayer, 'NEW_SELECTION', sql)
 
     # select by location to see if conincident with hydrolines
-    arcpy.SelectLayerByLocation_management(hydrolinesLayer, 'INTERSECT', accessLayer, 'NEW_SELECTION')
+    arcpy.SelectLayerByLocation_management(
+        in_layer=hydrolinesLayer,
+        overlap_type='INTERSECT',
+        select_features=accessLayer,
+        selection_type='NEW_SELECTION'
+    )
 
     # if concident, one hydroline feature should be selected and we return true
     if len(arcpy.Describe(hydrolinesLayer).FIDSet):
@@ -47,6 +54,7 @@ def accessValid(accessLayer, hydrolinesLayer, awid):
     # if nothing is selected, it is not coincident, and return false
     else:
         return False
+
 
 def getValidReaches(awidList, putins, takeouts, hydrolines):
     """
@@ -60,15 +68,12 @@ def getValidReaches(awidList, putins, takeouts, hydrolines):
 
         # if both the putin and takeout are valid
         if accessValid(putins, hydrolines, awid) and accessValid(takeouts, hydrolines, awid):
-
             # add the awid to the valid list
             validAwidList.append(awid)
 
-    #TODO: remove after testing
-    arcpy.AddMessage('Valid AWID\'s\n{}'.format(validAwidList))
-
     # return the list...sorted because I like things organized
     return sorted(validAwidList)
+
 
 def getReachGeometry(putin, takeout, geometricNetwork):
     """
@@ -107,6 +112,7 @@ def getReachGeometry(putin, takeout, geometricNetwork):
     # return the geometry object
     return [row[0] for row in arcpy.da.SearchCursor(reachFc, 'SHAPE@')][0]
 
+
 def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspace):
     """
     Get valid AW reaches.
@@ -117,7 +123,7 @@ def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspac
     hydrolineLyr = arcpy.MakeFeatureLayer_management(hydrolineFc, 'hydrolines')[0]
 
     # create a target feature class for exporting valid awid reach hydrolines
-    outFcValid = arcpy.CreateFeatureclass_management (
+    outFcValid = arcpy.CreateFeatureclass_management(
         out_path=outputWorkspace,
         out_name='awHydrolines',
         geometry_type='POLYLINE',
@@ -147,7 +153,6 @@ def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspac
 
         # select both the putin and the takeout
         for access in (putinLyr, takeoutLyr):
-
             # select putin by awid
             arcpy.SelectLayerByAttribute_management(access, 'NEW_SELECTION', sql)
 
@@ -171,4 +176,4 @@ if __name__ == "__main__":
     arcpy.env.overwriteOutput = True
 
     # run the thing
-    getAwidReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputGdb)
+    getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputGdb)
