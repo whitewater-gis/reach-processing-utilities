@@ -94,7 +94,7 @@ def getReachGeometry(putin, takeout, geometricNetwork):
     # Trace returns a group layer with the joints and edges selected. Get the layer for the selected edges.
     lineLyr = arcpy.mapping.ListLayers(traceLayer)[2]
 
-    # the last line segment does not get selected, so pick it up with this command
+    # the last line segment does not get selected, so pick it up
     arcpy.SelectLayerByLocation_management(lineLyr, "INTERSECT", takeout, selection_type="ADD_TO_SELECTION")
 
     # split at the putin
@@ -121,14 +121,17 @@ def getReachGeometry(putin, takeout, geometricNetwork):
         return geometryList[0]
 
 
-def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspace):
+def getReaches(putinFc, takeoutFc, geometricNetwork, outputWorkspace):
     """
     Get valid AW reaches.
     """
+    # TODO: add parameter switch for optionally including validation(snapping)
+
     # Set the output workspace
     arcpy.env.workspace = outputWorkspace
 
-    # TODO: extract the hydrolines from the geometric network
+    # If NHD data the hydrolines will always be named NHDFlowline, and we can hard code this.
+    hydrolineFc = os.path.join(geometricNetwork, 'NHDFlowline')
 
     # create layers from input feature classes
     putinLyr = arcpy.MakeFeatureLayer_management(putinFc, 'putins')[0]
@@ -146,9 +149,6 @@ def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspac
     # add awid field to feature class
     arcpy.AddField_management(outFc, 'awid', 'TEXT', '8')
 
-    # create insert cursor for the lines feature class
-    insertCursor = arcpy.da.InsertCursor(outFc, ('awid', 'SHAPE@'))
-
     # get list of awid's
     awidList = [row[0] for row in arcpy.da.SearchCursor(putinLyr, 'awid')]
     grossCount = len(awidList)
@@ -158,7 +158,10 @@ def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspac
     validCount = len(validReaches)
 
     # TODO: add logging or reporting for this
-    print('{} of {} ({}%) reaches are valid'.format(validReaches, grossCount, validReaches/grossCount*100.0))
+    print('{} of {} ({}%) reaches are valid'.format(validCount, grossCount, validCount/grossCount*100.0))
+
+    # create insert cursor for the lines feature class
+    insertCursor = arcpy.da.InsertCursor(outFc, ('awid', 'SHAPE@'))
 
     # data workspace
     wksp = os.path.dirname(arcpy.Describe(putinLyr).catalogPath)
@@ -197,7 +200,6 @@ if __name__ == "__main__":
     # variables for testing
     putinFc = r'D:\spatialData\aw_Snoqualmie\dataAwSnqul.gdb\hydro_nad83\accessPutin_nad83'
     takeoutFc = r'D:\spatialData\aw_Snoqualmie\dataAwSnqul.gdb\hydro_nad83\accessTakeout_nad83'
-    hydrolineFc = r'D:\spatialData\aw_Snoqualmie\dataAwSnqul.gdb\hydro_nad83\NHDFlowline'
     geometricNetwork = r'D:\spatialData\aw_Snoqualmie\resources\NHDH1711.gdb\Hydrography\HYDRO_NET'
     outputGdb = r'C:\Users\joel5174\Documents\ArcGIS\aw-temp.gdb'
 
@@ -205,4 +207,4 @@ if __name__ == "__main__":
     arcpy.env.overwriteOutput = True
 
     # run the thing
-    getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputGdb)
+    getReaches(putinFc, takeoutFc, geometricNetwork, outputGdb)
