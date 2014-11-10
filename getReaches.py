@@ -131,7 +131,7 @@ def getReaches(putinFc, takeoutFc, geometricNetwork, outputWorkspace):
     arcpy.env.workspace = outputWorkspace
 
     # If NHD data the hydrolines will always be named NHDFlowline, and we can hard code this.
-    hydrolineFc = os.path.join(geometricNetwork, 'NHDFlowline')
+    hydrolineFc = os.path.join(os.path.dirname(geometricNetwork), 'NHDFlowline')
 
     # create layers from input feature classes
     putinLyr = arcpy.MakeFeatureLayer_management(putinFc, 'putins')[0]
