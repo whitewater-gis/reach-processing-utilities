@@ -40,7 +40,7 @@ def accessValid(accessLayer, hydrolinesLayer, awid):
     arcpy.SelectLayerByAttribute_management(accessLayer, 'NEW_SELECTION', sql)
 
     # select by location to see if conincident with hydrolines
-    arcpy.SelectLayerByLocation_management(
+    selection = arcpy.SelectLayerByLocation_management(
         in_layer=hydrolinesLayer,
         overlap_type='INTERSECT',
         select_features=accessLayer,
@@ -48,7 +48,7 @@ def accessValid(accessLayer, hydrolinesLayer, awid):
     )
 
     # if concident, one hydroline feature should be selected and we return true
-    if len(arcpy.Describe(hydrolinesLayer).FIDSet):
+    if selection.outputCount:
         return True
 
     # if nothing is selected, it is not coincident, and return false
@@ -91,76 +91,105 @@ def getReachGeometry(putin, takeout, geometricNetwork):
         in_barriers=takeout
     )[0]
 
-    # trace returns a group layer with the joints and edges selected. get the layer for the selected edges
+    # Trace returns a group layer with the joints and edges selected. Get the layer for the selected edges.
     lineLyr = arcpy.mapping.ListLayers(traceLayer)[2]
 
     # the last line segment does not get selected, so pick it up with this command
     arcpy.SelectLayerByLocation_management(lineLyr, "INTERSECT", takeout, selection_type="ADD_TO_SELECTION")
 
-    # dissolve into single feature
-    dissolveFc = arcpy.Dissolve_management(lineLyr, 'in_memory/tempDissolveLine')[0]
-
     # split at the putin
-    split01Fc = arcpy.SplitLineAtPoint_management(dissolveFc, putin, 'in_memory/tempPiLine')[0]
+    reachSplitPutinFc = arcpy.SplitLineAtPoint_management(lineLyr, putin, os.path.join('in_memory', 'reachSplitPutinFc'))[0]
 
     # split at the takeout
-    reachFc = arcpy.SplitLineAtPoint_management(split01Fc, takeout, 'in_memory/tempPiToLine')[0]
+    reachSegmentedFc = arcpy.SplitLineAtPoint_management(reachSplitPutinFc, takeout, os.path.join('in_memory', 'reachSegmentedFc'))[0]
 
     # trim off dangles upstream and downstream of the identified reach
-    arcpy.TrimLine_edit(reachFc)
+    arcpy.TrimLine_edit(reachSegmentedFc)
 
-    # return the geometry object
-    return [row[0] for row in arcpy.da.SearchCursor(reachFc, 'SHAPE@')][0]
+    # dissolve into single feature
+    reachFc = arcpy.Dissolve_management(reachSegmentedFc, 'reachFc')
+
+    # use list comprehension to get geometry out
+    geometryList = [row[0] for row in arcpy.da.SearchCursor(reachFc, 'SHAPE@')]
+
+    # make sure there actually is a geometry
+    if len(geometryList) == 0:
+        return False
+
+    # otherwise, give up the goods
+    else:
+        return geometryList[0]
 
 
 def getReaches(putinFc, takeoutFc, hydrolineFc, geometricNetwork, outputWorkspace):
     """
     Get valid AW reaches.
     """
+    # Set the output workspace
+    arcpy.env.workspace = outputWorkspace
+
+    # TODO: extract the hydrolines from the geometric network
+
     # create layers from input feature classes
     putinLyr = arcpy.MakeFeatureLayer_management(putinFc, 'putins')[0]
     takeoutLyr = arcpy.MakeFeatureLayer_management(takeoutFc, 'takeouts')[0]
     hydrolineLyr = arcpy.MakeFeatureLayer_management(hydrolineFc, 'hydrolines')[0]
 
     # create a target feature class for exporting valid awid reach hydrolines
-    outFcValid = arcpy.CreateFeatureclass_management(
+    outFc = arcpy.CreateFeatureclass_management(
         out_path=outputWorkspace,
         out_name='awHydrolines',
         geometry_type='POLYLINE',
-        spatial_reference=arcpy.Describe(putinFc).spatialReference
+        spatial_reference=arcpy.Describe(putinLyr).spatialReference
     )[0]
 
     # add awid field to feature class
-    arcpy.AddField_management(outFcValid, 'awid', 'TEXT', '8')
+    arcpy.AddField_management(outFc, 'awid', 'TEXT', '8')
 
     # create insert cursor for the lines feature class
-    insertCursor = arcpy.da.SearchCursor(outFcValid, 'awid', 'SHAPE@')
+    insertCursor = arcpy.da.InsertCursor(outFc, ('awid', 'SHAPE@'))
 
     # get list of awid's
     awidList = [row[0] for row in arcpy.da.SearchCursor(putinLyr, 'awid')]
+    grossCount = len(awidList)
+
+    # of the gross count, get the valid count
+    validReaches = getValidReaches(awidList, putinLyr, takeoutLyr, hydrolineLyr)
+    validCount = len(validReaches)
+
+    # TODO: add logging or reporting for this
+    print('{} of {} ({}%) reaches are valid'.format(validReaches, grossCount, validReaches/grossCount*100.0))
+
+    # data workspace
+    wksp = os.path.dirname(arcpy.Describe(putinLyr).catalogPath)
+
+    # add field delimters based on the source workspace
+    sqlStub = arcpy.AddFieldDelimiters(wksp, 'awid')
 
     # extract the hydrolines for each valid awid
-    for awid in getValidReaches(awidList, putinLyr, takeoutLyr, hydrolineLyr):
-
-        # data workspace
-        wksp = os.path.dirname(arcpy.Describe(putinLyr).catalogPath)
-
-        # add field delimters based on the source workspace
-        sqlStub = arcpy.AddFieldDelimiters(wksp, 'awid')
+    for awid in validReaches:
 
         # finish the sql string
         sql = "{} = '{}'".format(sqlStub, awid)
 
-        # select both the putin and the takeout
+        # select both the putin and the takeout points
         for access in (putinLyr, takeoutLyr):
-            # select putin by awid
+
+            # select putin & takeout by awid
             arcpy.SelectLayerByAttribute_management(access, 'NEW_SELECTION', sql)
 
         # get the geometry for the awid
         reachGeometry = getReachGeometry(putinLyr, takeoutLyr, geometricNetwork)
 
-        # insert the awid into the new feautre class
-        insertCursor.insertRow(awid, reachGeometry)
+        # if the reachGeometry finds a geometry
+        if reachGeometry:
+
+            # insert the awid & geometry into the new feature class
+            insertCursor.insertRow((awid, reachGeometry))
+
+        # get rid of the cursor, freeing up memory and releasing the schema lock
+        del insertCursor
+
 
 # run the script as standalone
 if __name__ == "__main__":
@@ -170,7 +199,7 @@ if __name__ == "__main__":
     takeoutFc = r'D:\spatialData\aw_Snoqualmie\dataAwSnqul.gdb\hydro_nad83\accessTakeout_nad83'
     hydrolineFc = r'D:\spatialData\aw_Snoqualmie\dataAwSnqul.gdb\hydro_nad83\NHDFlowline'
     geometricNetwork = r'D:\spatialData\aw_Snoqualmie\resources\NHDH1711.gdb\Hydrography\HYDRO_NET'
-    outputGdb = r'C:\Users\joel5174\Documents\ArcGIS\Default.gdb'
+    outputGdb = r'C:\Users\joel5174\Documents\ArcGIS\aw-temp.gdb'
 
     # overwrite previous runs
     arcpy.env.overwriteOutput = True
