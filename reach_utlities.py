@@ -1,7 +1,7 @@
 """
 author:     Joel McCune (joel.mccune+aw@gmail.com)
 dob:        03 Dec 2014
-purpose:    Provide the utilities to clean up and enhance the spatial component of the American Whitewater reach
+purpose:    Provide the utilities to clean up and enhance the spatial component of the American Whitewater reaches
             data set.
 """
 # import modules
@@ -94,7 +94,7 @@ def process_reach(reach_id, access_fc, hydro_network):
 
     # trace upstream from the takeout
     downstream_group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', putin_geometry,
-                                                                  'TRACE_DOWNSTREAM', takeout_geometry)[0]
+                                                                    'TRACE_DOWNSTREAM', takeout_geometry)[0]
 
     # extract the flowline layer with upstream features selected from the group layer
     downstream_hydroline_layer = arcpy.mapping.ListLayers(downstream_group_layer, '*Flowline')[0]
@@ -109,11 +109,8 @@ def process_reach(reach_id, access_fc, hydro_network):
     # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles above and below the
     # putin and takeout
     downstream_hydroline_geometry = arcpy.SplitLineAtPoint_management(downstream_hydroline_dissolve,
-                                                                      [putin_geometry, takeout_geometry],
-                                                                      arcpy.Geometry())
-
-    # trim the dangles
-    arcpy.TrimLine_edit(downstream_hydroline_geometry)
+                                                                           [putin_geometry, takeout_geometry],
+                                                                           arcpy.Geometry())
 
     # assemble into a success dictionary and return result
     return {
@@ -124,15 +121,28 @@ def process_reach(reach_id, access_fc, hydro_network):
 
 
 def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_invalid_reach_table):
+    """
+    Get an output reach feature class using an access feature class with putins and takeouts.
+    :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
+                      takeout. These fields must store the AW id for the point role as a putin or takeout.
+    :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
+    :param output_hydroline_fc: This will be the output
+    :param output_invalid_reach_table:
+    :return:
+    """
 
-    # get list of AW id's from the takeouts
-    awid_list = [row[0] for row in arcpy.da.SearchCursor(access_fc, 'takeout')]
+    # get list of AW id's from the takeouts not including the None values
+    awid_list = []
+    with arcpy.da.SearchCursor(access_fc, 'takeout') as cursor:
+        for row in cursor:
+            if row[0] is not None:
+                awid_list.append(row[0])
 
     # create output hydroline feature class
     hydroline_fc = arcpy.CreateFeatureclass_management(
         out_path=os.path.dirname(output_hydroline_fc),
         out_name=os.path.basename(output_hydroline_fc),
-        geometry_type='POINT',
+        geometry_type='POLYLINE',
         spatial_reference=arcpy.Describe(access_fc).spatialReference
     )[0]
 
@@ -147,6 +157,7 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
         arcpy.AddField_management(
             in_table=table,
             field_name='awid',
+            field_type='TEXT',
             field_length=10
         )
 
@@ -154,13 +165,16 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
     arcpy.AddField_management(
         in_table=invalid_tbl,
         field_name='reason',
+        field_type='TEXT',
         field_length=100
     )
+
+    # create hydroline layer
+    hydroline_lyr = arcpy.MakeFeatureLayer_management(hydroline_fc, 'hydroline')
 
     # for every reach
     for awid in awid_list:
 
-        # TODO JDM: spread this across processes...hyperthreading at hyperspeed
         # process each reach
         reach = process_reach(
             reach_id=awid,
@@ -171,22 +185,44 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
         # if the reach is valid
         if reach['valid']:
 
-            # start an edit session
+            # start an edit session and edit operation
+            edit = arcpy.da.Editor(os.path.dirname(output_hydroline_fc))
+            edit.startEditing(False, False)
+            edit.startOperation()
 
             # create an insert cursor
+            with arcpy.da.InsertCursor(output_hydroline_fc, ('awid', 'SHAPE@')) as cursor:
 
-            # for every geometry
+                # for every geometry for the reach
+                for geometry in reach['geometry_list']:
 
-                # add a feature to the output feature class
+                    # insert a record in the feature class for the geometry
+                    cursor.insertRow((reach['awid'], geometry))
+
+            # select the features with this awid
+            arcpy.SelectLayerByAttribute_management(hydroline_lyr, 'NEW_SELECTION', "awid = '{}'".format(awid))
+
+            # trim the dangles above and below the putin and takeout
+            arcpy.TrimLine_edit(hydroline_lyr)
 
             # stop editing and save edits
+            edit.startOperation()
+            edit.stopEditing(True)
 
         # if the reach is not valid
+        elif not reach['valid']:
 
-            # start an edit session
+            # start an edit session and edit operation
+            edit = arcpy.da.Editor(os.path.dirname(output_invalid_reach_table))
+            edit.startEditing(False, False)
+            edit.startOperation()
 
             # create an insert cursor
+            with arcpy.da.InsertCursor(output_invalid_reach_table, ('awid', 'reason')) as cursor:
 
-            # add a record for the invalid reach
+                # insert a record in the feature class for the geometry
+                cursor.insertRow((str(reach['awid']), reach['reason']))
 
             # stop editing and save edits
+            edit.startOperation()
+            edit.stopEditing(True)
