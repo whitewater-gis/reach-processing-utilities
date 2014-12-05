@@ -66,17 +66,26 @@ def validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro
                       upstream from the takeout.
     """
     # trace upstream from the takeout
-    upstream_group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', takeout_geometry,
-                                                                  'TRACE_UPSTREAM')[0]
+    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', takeout_geometry,
+                                                         'TRACE_UPSTREAM')[0]
 
     # extract the flowline layer with upstream features selected from the group layer
-    upstream_hydroline_layer = arcpy.mapping.ListLayers(upstream_group_layer, '*Flowline')[0]
+    hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
 
-    # dissolve into a single geometry object
-    upstream_hydroline_geometry = arcpy.Dissolve_management(upstream_hydroline_layer, arcpy.Geometry())[0]
+    # get geometry objects of upstream flowline
+    geometry_list = [row[0] for row in arcpy.da.SearchCursor(hydroline_layer, 'SHAPE@')]
 
-    # test to see if putin is on the upstream hydroline from the putin and return the result (boolean)
-    return putin_geometry.within(upstream_hydroline_geometry)
+    # iterate the hydroline geometry objects
+    for hydroline_geometry in geometry_list:
+
+        # test if the putin is coincident with the hydroline geometry segment
+        if putin_geometry.within(hydroline_geometry):
+
+            # if coincident, return true...exiting function
+            return True
+
+    # if every hydroline segment is tested and none of them are coincident with the putin, return false
+    return False
 
 
 def process_reach(reach_id, access_fc, hydro_network):
