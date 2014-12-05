@@ -7,7 +7,7 @@ purpose:    Provide the utilities to clean up and enhance the spatial component 
 # import modules
 import arcpy
 import os
-
+import time
 
 def validate_has_access(reach_id, access_fc):
     """
@@ -93,30 +93,39 @@ def process_reach(reach_id, access_fc, hydro_network):
         return {'valid': False, 'awid': reach_id, 'reason': 'putin is not upstream of takeout'}
 
     # trace upstream from the takeout
-    downstream_group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', putin_geometry,
+    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', putin_geometry,
                                                                     'TRACE_DOWNSTREAM', takeout_geometry)[0]
 
     # extract the flowline layer with upstream features selected from the group layer
-    downstream_hydroline_layer = arcpy.mapping.ListLayers(downstream_group_layer, '*Flowline')[0]
+    hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
 
     # select the last segment so the reach extends all the way to the takeout
-    arcpy.SelectLayerByLocation_management(downstream_hydroline_layer, "INTERSECT", takeout_geometry,
+    arcpy.SelectLayerByLocation_management(hydroline_layer, "INTERSECT", takeout_geometry,
                                            selection_type='ADD_TO_SELECTION')
 
     # dissolve into a single geometry object
-    downstream_hydroline_dissolve = arcpy.Dissolve_management(downstream_hydroline_layer, arcpy.Geometry())[0]
+    hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
 
     # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles above and below the
-    # putin and takeout
-    downstream_hydroline_geometry = arcpy.SplitLineAtPoint_management(downstream_hydroline_dissolve,
-                                                                           [putin_geometry, takeout_geometry],
-                                                                           arcpy.Geometry())
+    # putin and takeout and saving as in memory feature class since trim line does not work on a geometry list
+    for access in [putin_geometry, takeout_geometry]:
+        hydroline = arcpy.SplitLineAtPoint_management(
+            hydroline,
+            access,
+            'in_memory/split{}'.format(int(time.time()*1000))
+        )[0]
+
+    # trim ends of reach off above and below the putin and takeout
+    arcpy.TrimLine_edit(hydroline)
+
+    # pull out just geometry objects
+    hydroline_geometry = [row[0] for row in arcpy.da.SearchCursor(hydroline, 'SHAPE@')]
 
     # assemble into a success dictionary and return result
     return {
         'valid': True,
         'awid': reach_id,
-        'geometry_list': downstream_hydroline_geometry
+        'geometry_list': hydroline_geometry
     }
 
 
@@ -169,9 +178,6 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
         field_length=100
     )
 
-    # create hydroline layer
-    hydroline_lyr = arcpy.MakeFeatureLayer_management(hydroline_fc, 'hydroline')
-
     # for every reach
     for awid in awid_list:
 
@@ -185,44 +191,23 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
         # if the reach is valid
         if reach['valid']:
 
-            # start an edit session and edit operation
-            edit = arcpy.da.Editor(os.path.dirname(output_hydroline_fc))
-            edit.startEditing(False, False)
-            edit.startOperation()
+            # message valid
+            arcpy.AddMessage('{} is valid, and will be processed.'.format(awid))
 
             # create an insert cursor
-            with arcpy.da.InsertCursor(output_hydroline_fc, ('awid', 'SHAPE@')) as cursor:
+            with arcpy.da.InsertCursor(output_hydroline_fc, ('awid', 'SHAPE@')) as cursor_valid:
 
-                # for every geometry for the reach
+                # iterate the geometry objects in the list
                 for geometry in reach['geometry_list']:
 
                     # insert a record in the feature class for the geometry
-                    cursor.insertRow((reach['awid'], geometry))
-
-            # select the features with this awid
-            arcpy.SelectLayerByAttribute_management(hydroline_lyr, 'NEW_SELECTION', "awid = '{}'".format(awid))
-
-            # trim the dangles above and below the putin and takeout
-            arcpy.TrimLine_edit(hydroline_lyr)
-
-            # stop editing and save edits
-            edit.startOperation()
-            edit.stopEditing(True)
+                    cursor_valid.insertRow((reach['awid'], geometry))
 
         # if the reach is not valid
         elif not reach['valid']:
 
-            # start an edit session and edit operation
-            edit = arcpy.da.Editor(os.path.dirname(output_invalid_reach_table))
-            edit.startEditing(False, False)
-            edit.startOperation()
-
             # create an insert cursor
-            with arcpy.da.InsertCursor(output_invalid_reach_table, ('awid', 'reason')) as cursor:
+            with arcpy.da.InsertCursor(output_invalid_reach_table, ('awid', 'reason')) as cursor_invalid:
 
                 # insert a record in the feature class for the geometry
-                cursor.insertRow((str(reach['awid']), reach['reason']))
-
-            # stop editing and save edits
-            edit.startOperation()
-            edit.stopEditing(True)
+                cursor_invalid.insertRow((str(reach['awid']), reach['reason']))

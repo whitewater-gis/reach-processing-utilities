@@ -4,8 +4,10 @@ Unit testing
 # import modules
 import unittest
 import os
+
 import arcpy
-import reach_utlities
+
+from aw import reach_utlities
 
 
 class test_case_reach_utilities(unittest.TestCase):
@@ -15,7 +17,7 @@ class test_case_reach_utilities(unittest.TestCase):
 
     # testing variables
     test_reach_id = '2064'
-    dir_this = os.path.dirname(__file__)
+    dir_this = os.path.dirname(os.path.dirname(__file__))
     gdb_data = os.path.join(dir_this, r'resources\data.gdb')
     gdb_scratch = os.path.join(dir_this, r'resources\scratch.gdb')
     test_access_fc = os.path.join(gdb_data, 'access')
