@@ -37,7 +37,7 @@ class test_case_reach_utilities(unittest.TestCase):
     dir_this = os.path.dirname(os.path.dirname(__file__))
     gdb_data = os.path.join(dir_this, r'resources\data.gdb')
     gdb_scratch = os.path.join(dir_this, r'resources\scratch.gdb')
-    test_access_fc = os.path.join(gdb_data, 'access')
+    test_access_fc = os.path.join(gdb_data, 'access1711')
     test_access_subset_fc = os.path.join(gdb_data, 'access_subset')
     test_hydro_network = os.path.join(gdb_data, r'Hydrography\HYDRO_NET')
 

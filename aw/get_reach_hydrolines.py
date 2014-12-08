@@ -21,6 +21,9 @@ purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
 import arcpy
 import reach_utlities
 
+# provide a more intersting message
+arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
+
 # collect input parameters and run functions
 reach_utlities.get_reach_line_fc(
     access_fc=arcpy.GetParameter(0),
