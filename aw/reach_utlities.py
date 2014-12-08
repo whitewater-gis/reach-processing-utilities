@@ -81,8 +81,8 @@ def validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro
         # test if the putin is coincident with the hydroline geometry segment
         if putin_geometry.within(hydroline_geometry):
 
-            # if coincident, return true...exiting function
-            return True
+            # if coincident, return the upstream traced hydroline layer...exiting function
+            return hydroline_layer
 
     # if every hydroline segment is tested and none of them are coincident with the putin, return false
     return False
@@ -108,23 +108,29 @@ def process_reach(reach_id, access_fc, hydro_network):
     takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
     putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
 
-    # ensure the putin is upstream of the takeout
-    if not validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro_network):
+    # ensure the putin is upstream of the takeout, and if valid, save upstream trace hydroline layer
+    valid_upstream_trace = validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro_network)
+    if not valid_upstream_trace:
         arcpy.AddMessage(
             '{} putin does not appear to be upstream of the takeout, and will not be processed.'.format(reach_id)
         )
         return {'valid': False, 'awid': reach_id, 'reason': 'putin is not upstream of takeout'}
 
-    # trace upstream from the takeout
-    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', putin_geometry,
+    # trace downstream from the takeout
+    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream', putin_geometry,
                                                                     'TRACE_DOWNSTREAM', takeout_geometry)[0]
 
     # extract the flowline layer with upstream features selected from the group layer
     hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
 
     # select the last segment so the reach extends all the way to the takeout
-    arcpy.SelectLayerByLocation_management(hydroline_layer, "INTERSECT", takeout_geometry,
+    arcpy.SelectLayerByLocation_management(hydroline_layer, 'INTERSECT', takeout_geometry,
                                            selection_type='ADD_TO_SELECTION')
+
+    # select by location to only get the intersecting segments from both the upstream and downstream traces
+    # this addresses the problem of braided streams tracing downstream past the takout
+    arcpy.SelectLayerByLocation_management(hydroline_layer, 'INTERSECT', valid_upstream_trace,
+                                           selection_type='SUBSET_SELECTION')
 
     # dissolve into a single geometry object
     hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
