@@ -202,20 +202,28 @@ def process_reach(reach_id, access_fc, hydro_network):
     }
 
 
-def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_invalid_reach_table):
+def get_reach_line_fc(access_fc, huc4_fc, hydro_network, output_hydroline_fc, output_invalid_reach_table):
     """
     Get an output reach feature class using an access feature class with putins and takeouts.
-    :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
+    :param access_lyr: The point feature class for accesses. There must be an attribute named putin and another named
                       takeout. These fields must store the AW id for the point role as a putin or takeout.
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
     :param output_hydroline_fc: This will be the output
     :param output_invalid_reach_table:
     :return:
     """
+    # create access feature class
+    access_lyr = arcpy.MakeFeatureLayer_management(access_fc)[0]
+
+    # create huc4 layer
+    huc4_lyr = arcpy.MakeFeatureLayer_management(huc4_fc)[0]
+
+    # select the accesses in the subregion
+    arcpy.SelectLayerByLocation_management(access_lyr, 'INTERSECT', huc4_lyr)
 
     # get list of AW id's from the takeouts not including the None values
     awid_list = []
-    with arcpy.da.SearchCursor(access_fc, 'takeout') as cursor:
+    with arcpy.da.SearchCursor(access_lyr, 'takeout') as cursor:
         for row in cursor:
             if row[0] is not None:
                 awid_list.append(row[0])
@@ -228,7 +236,7 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
         out_path=os.path.dirname(output_hydroline_fc),
         out_name=os.path.basename(output_hydroline_fc),
         geometry_type='POLYLINE',
-        spatial_reference=arcpy.Describe(access_fc).spatialReference
+        spatial_reference=arcpy.Describe(access_lyr).spatialReference
     )[0]
 
     # create output invalid reach table
@@ -274,7 +282,7 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
         # process each reach
         reach = process_reach(
             reach_id=awid,
-            access_fc=access_fc,
+            access_fc=access_lyr,
             hydro_network=hydro_network
         )
 
