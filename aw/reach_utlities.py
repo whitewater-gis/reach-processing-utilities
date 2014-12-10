@@ -82,7 +82,7 @@ def validate_conicidence(reach_id, access_fc, hydro_network):
                                             "{} = '{}' OR {} = '{}'".format(sql_pi, reach_id, sql_to, reach_id))
 
     # snap the putin and takeout to the hydrolines
-    arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '200 Feet']])
+    arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
 
     # select by location, selecting accesses coincident with the hydrolines
     arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='SUBSET_SELECTION')
@@ -148,7 +148,7 @@ def process_reach(reach_id, access_fc, hydro_network):
     # ensure the accesses are coincident with the hydrolines
     if not validate_conicidence(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
-            '{} accesses do not appear to be coincident with hydrolines, and will not be processed'.format(reach_id)
+            '{} accesses do not appear to be coincident with hydrolines, and will not be processed.'.format(reach_id)
         )
         return {'valid': False, 'awid': reach_id, 'reason': 'accesses not coincident with hydrolines'}
 
@@ -220,6 +220,9 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
             if row[0] is not None:
                 awid_list.append(row[0])
 
+    # give a little beta to the front end
+    arcpy.SetProgressor(type='default', message='{} reach id\'s were located'.format(len(awid_list)))
+
     # create output hydroline feature class
     hydroline_fc = arcpy.CreateFeatureclass_management(
         out_path=os.path.dirname(output_hydroline_fc),
@@ -251,8 +254,22 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
         field_length=100
     )
 
+    # keep providing updates
+    arcpy.SetProgressor('step', 'Ready to see how many reaches we can process.', 0, len(awid_list), 1)
+
+    # progressor trackers
+    progressor_index = 0
+    valid_count = 0
+
     # for every reach
     for awid in awid_list:
+
+        # index the progressor tracker
+        progressor_index += 1
+
+        # provide updates
+        arcpy.SetProgressorPosition(progressor_index)
+        arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(awid, progressor_index, len(awid_list)))
 
         # process each reach
         reach = process_reach(
@@ -276,6 +293,9 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
                     # insert a record in the feature class for the geometry
                     cursor_valid.insertRow((reach['awid'], geometry))
 
+            # increment the valid counter
+            valid_count += 1
+
         # if the reach is not valid
         elif not reach['valid']:
 
@@ -284,3 +304,75 @@ def get_reach_line_fc(access_fc, hydro_network, output_hydroline_fc, output_inva
 
                 # insert a record in the feature class for the geometry
                 cursor_invalid.insertRow((str(reach['awid']), reach['reason']))
+
+    # at the very end, report the success rate
+    arcpy.AddMessage('{}% ({}/{}) of reaches were processed.'.format(valid_count/len(awid_list)*100, valid_count,
+                                                                     len(awid_list)))
+
+
+def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
+    """
+    After running the analysis to extract valid hydrolines, this adds the relevant metadata from the master metadata
+    table.
+    :param hydroline_fc: The output from getting the hydrolines above with an awid field.
+    :param meta_table: The master reach metadata table created from the original reach extract.
+    :return: boolean: Success or failure.
+    """
+    # list of attribute fields to be added
+    attribute_list = (
+        {'name': 'name_river', 'type': 'TEXT', 'length': 255},
+        {'name': 'name_section', 'type': 'TEXT', 'length': 255},
+        {'name': 'name_common', 'type': 'TEXT', 'length': 255},
+        {'name': 'difficulty', 'type': 'TEXT', 'length': 10},
+        {'name': 'difficulty_min', 'type': 'TEXT', 'length': 5},
+        {'name': 'difficulty_max', 'type': 'TEXT', 'length': 5},
+        {'name': 'difficulty_outlier', 'type': 'TEXT', 'length': 5}
+    )
+
+    # add all the fields to hydrolines
+    for attribute in attribute_list:
+        arcpy.AddField_management(hydroline_fc, attribute['name'], attribute['type'], field_length=attribute['length'])
+
+    # get list of all AW id's
+    awid_list = set([row[0] for row in arcpy.da.SearchCursor(hydroline_fc, 'awid')])
+
+    # create a layer for the hydroline feature class
+    hydroline_lyr = arcpy.MakeFeatureLayer_management(hydroline_fc, 'hydroline_lyr')
+
+    # create table view for meta table
+    meta_veiw = arcpy.MakeFeatureLayer_management(meta_veiw, 'meta_view')
+
+    # for every AW id found
+    for awid in awid_list:
+
+        # create sql string
+        sql = "{} = '{}'".format(
+            arcpy.AddFieldDelimiters(os.path.dirname(arcpy.Describe(hydroline_fc).catalogPath), 'awid'),
+            awid
+        )
+
+        # select features in the hydroline feature class
+        arcpy.SelectLayerByAttribute_management(hydroline_lyr, 'NEW_SELECTION', sql)
+
+        # select features in the meta view
+        arcpy.SelectLayerByAttribute_management(meta_veiw, 'NEW_SELECTION', sql)
+
+        # attributes to transfer
+        attribute_name_list = ['awid']
+        for attr in attribute_list:
+            attribute_name_list.append(attribute_list['name'])
+
+        # load attributes from meta table into cursor
+        meta_values = [row for row in arcpy.da.SearchCursor(meta_veiw, attribute_name_list)][0]
+
+        # use update cursor to populate the values in the feature class
+        with arcpy.da.UpdateCursor(hydroline_lyr) as update_cursor:
+
+            # iterate selected rows
+            for row in update_cursor:
+
+                # use the collected values from the meta table to populate the row in the feature class
+                row = meta_values
+
+                # commit the changes
+                update_cursor.updateRow(row)
