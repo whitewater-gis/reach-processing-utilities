@@ -27,6 +27,36 @@ import arcpy
 from aw import reach_utlities
 
 
+class test_case_prep_subregion(unittest.TestCase):
+
+    # overwrite outputs
+    arcpy.env.overwriteOutput = True
+
+    # variables
+    test_subregion_huc4 = '0207'
+    test_output_directory = 'C:\Users\joel5174\Documents\ArcGIS\scratch'
+    test_staging_gdb = os.path.join(test_output_directory, 'NHDH{}.gdb'.format(test_subregion_huc4))
+    test_output_gdb = os.path.join(test_output_directory, '{}.gdb'.format(test_subregion_huc4))
+
+    # call prep subregion
+    reach_utlities.get_subregion_data(test_subregion_huc4, test_output_directory)
+
+    def test_usgs_geodatabase_exists(self):
+        self.assertTrue(arcpy.Exists(self.test_staging_gdb))
+
+    def test_usgs_hydro_net_exists(self):
+        self.assertTrue(arcpy.Exists(os.path.join(self.test_staging_gdb, 'Hydrography', 'HYDRO_NET')))
+
+    def test_usgs_huc4_exists(self):
+        self.assertTrue(arcpy.Exists(os.path.join(self.test_staging_gdb, 'WBD', 'WBDHU4')))
+
+    def test_final_hydro_net_exists(self):
+        self.assertTrue(arcpy.Exists(os.path.join(self.test_output_gdb, 'Hydrography', 'HYDRO_NET')))
+
+    def test_final_huc4_exists(self):
+        self.assertTrue(arcpy.Exists(os.path.join(self.test_staging_gdb, 'WBDHU4')))
+
+
 class test_case_reach_utilities(unittest.TestCase):
 
     # overwrite outputs

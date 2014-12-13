@@ -20,8 +20,83 @@ purpose:    Provide the utilities to clean up and enhance the spatial component 
 """
 # import modules
 import arcpy
-import os
+import os.path
 import time
+import ftplib
+import zipfile
+
+
+def get_subregion_data(huc4, output_dir):
+    """
+    Download a subregion from the USGS, download it and set up the data for analysis.
+    :param huc4: String four digit HUC to download
+    :param output_dir: Directory to store output geodatabase
+    :return: Boolean success or failure
+    """
+    # get path to scratch directory to store resources
+    scratch_dir = arcpy.env.scratchFolder
+
+    # open connection to USGS FTP server
+    ftp = ftplib.FTP('nhdftp.usgs.gov')
+    ftp.login()
+
+    # change directory to where the desired zipped archives live
+    ftp.cwd('DataSets/Staged/SubRegions/FileGDB/HighResolution')
+
+    # set the output file path
+    temp_zip = os.path.join(scratch_dir, 'NHDH{}_931v220.zip'.format(huc4))
+
+    # get the archive from the USGS and store it locally
+    ftp.retrbinary('RETR NHDH{}_931v220.zip'.format(huc4), open(temp_zip, 'wb').write)
+
+    # close the connection to the USGS FTP server
+    ftp.close()
+
+    # unzip the archive to the temp directory
+    zfile = zipfile.ZipFile(temp_zip)
+
+    # extract all the contents to the output directory
+    zfile.extractall(output_dir)
+
+    # unzip the archive to the temp directory
+    zfile = zipfile.ZipFile(temp_zip)
+
+    # extract all the contents to the output directory
+    zfile.extractall(output_dir)
+
+    # create the final output geodatabase
+    output_gdb = arcpy.CreateFileGDB_management(output_dir, '{}.gdb'.format(huc4))[0]
+
+    # For some reason, copy keeps bombing with the geometric network, so copy the feature dataset first. Then delete
+    # everything from the geodatabase not directly required for the analysis we need to do. True, this is not the most
+    # efficient method...but given the circumstances, at least it works.
+    # copy the geometric network into the output geodatabase
+    arcpy.Copy_management(
+        os.path.join(output_dir, 'NHDH{}.gdb'.format(huc4), 'Hydrography'),
+        os.path.join(output_gdb, 'Hydrography')
+    )
+
+    # use walk to iterate everything in the geodatabase
+    for parent_dir, dir_list, obj_list in arcpy.da.Walk(output_gdb):
+        for obj in obj_list:
+
+            # if the object encountered is not one of the four objects we need to retain, toss it
+            if obj != 'Hydrography' and obj != 'HYDRO_NET' and obj != 'HYDRO_NET_Junctions' and obj != 'NHDFlowline':
+                arcpy.Delete_management(os.path.join(parent_dir, obj))
+
+    # extract out the only the huc4 polygon
+    arcpy.Select_analysis(
+        os.path.join(output_dir, 'NHDH{}.gdb'.format(huc4), 'WBD', 'WBDHU4'),
+        os.path.join(output_gdb, 'WBDHU4'),
+        "HUC4 = '{}'".format(huc4)
+    )
+
+    # delete the staging geodatabase
+    arcpy.Delete_management(os.path.join(output_dir, 'NHDH{}.gdb'.format(huc4)))
+
+    # return the path to the geodatabase
+    return output_gdb
+
 
 def validate_has_access(reach_id, access_fc):
     """
@@ -348,7 +423,7 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
     hydroline_lyr = arcpy.MakeFeatureLayer_management(hydroline_fc, 'hydroline_lyr')
 
     # create table view for meta table
-    meta_veiw = arcpy.MakeFeatureLayer_management(meta_veiw, 'meta_view')
+    meta_veiw = arcpy.MakeFeatureLayer_management(meta_table, 'meta_view')
 
     # for every AW id found
     for awid in awid_list:

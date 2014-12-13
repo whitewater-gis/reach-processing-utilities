@@ -24,8 +24,19 @@ import reach_utlities
 # provide a more intersting message
 arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
 
-# collect input parameters and run functions
-reach_utlities.get_subregion_data(
-    huc4=arcpy.GetParameterAsText(0),
-    output_dir=arcpy.GetParameterAsText(1)
-)
+# get the list of huc4 codes from the huc4 polygon layer
+huc4_layer = arcpy.GetParameter(0)
+huc4_list = [row[0] for row in arcpy.da.SearchCursor(huc4_layer, 'HUC4')]
+
+# test to make sure there are not more than 10 subregions
+if len(huc4_list) > 10:
+    arcpy.AddError('More than 10 subregions are selected. Please select 10 or fewer subregions.')
+
+# for every HUC
+for huc4 in huc4_list:
+
+    # download and prep the data
+    reach_utlities.get_subregion_data(
+        huc4=huc4,
+        output_dir=arcpy.GetParameterAsText(1)
+    )
