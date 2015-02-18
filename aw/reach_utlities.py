@@ -109,6 +109,9 @@ def validate_has_access(reach_id, access_fc):
     # get the path to the accesses feature class
     path = arcpy.Describe(access_fc).path
 
+    # overwrite outputs
+    arcpy.env.overwriteOutput = True
+
     # make a feature layer for accesses
     access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access')
 
@@ -126,8 +129,10 @@ def validate_has_access(reach_id, access_fc):
 
     # if the putin or takeout count is not exactly one, invalidate
     if get_access_count(access_lyr, 'putin', reach_id) == 1 and get_access_count(access_lyr, 'takeout', reach_id) == 1:
+        del access_lyr
         return True
     else:
+        del access_lyr
         return False
 
 def validate_conicidence(reach_id, access_fc, hydro_network):
@@ -277,65 +282,80 @@ def process_reach(reach_id, access_fc, hydro_network):
     }
 
 
-def get_reach_line_fc(access_fc, huc4_fc, hydro_network, output_hydroline_fc, output_invalid_reach_table):
+def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
     """
     Get an output reach feature class using an access feature class with putins and takeouts.
     :param access_lyr: The point feature class for accesses. There must be an attribute named putin and another named
                       takeout. These fields must store the AW id for the point role as a putin or takeout.
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
-    :param output_hydroline_fc: This will be the output
-    :param output_invalid_reach_table:
+    :param reach_hydroline_fc: This will be the output
+    :param reach_invalid_tbl:
     :return:
     """
-    # create access feature class
+    # create access feature layer
     access_lyr = arcpy.MakeFeatureLayer_management(access_fc)[0]
 
     # create huc4 layer
-    huc4_lyr = arcpy.MakeFeatureLayer_management(huc4_fc)[0]
+    aoi_lyr = arcpy.MakeFeatureLayer_management(aoi_polygon)[0]
 
-    # select the accesses in the subregion
-    arcpy.SelectLayerByLocation_management(access_lyr, 'INTERSECT', huc4_lyr)
+    # select the accesses in the area of interest (typically selected subregions)
+    arcpy.SelectLayerByLocation_management(access_lyr, 'INTERSECT', aoi_lyr)
 
     # get list of AW id's from the takeouts not including the None values
     awid_list = []
     with arcpy.da.SearchCursor(access_lyr, 'takeout') as cursor:
         for row in cursor:
-            if row[0] is not None:
+
+            # when in the file geodatabase, the values are none, but once in an SDE, they become zeros
+            if not (row[0] is None or int(row[0]) == 0):
                 awid_list.append(row[0])
 
     # give a little beta to the front end
-    arcpy.SetProgressor(type='default', message='{} reach id\'s were located'.format(len(awid_list)))
+    arcpy.SetProgressor(type='default', message='{} reach id accesses successfully were located'.format(len(awid_list)))
 
-    # create output hydroline feature class
-    hydroline_fc = arcpy.CreateFeatureclass_management(
-        out_path=os.path.dirname(output_hydroline_fc),
-        out_name=os.path.basename(output_hydroline_fc),
-        geometry_type='POLYLINE',
-        spatial_reference=arcpy.Describe(access_lyr).spatialReference
-    )[0]
+    # if the output hydrolines does not already exist
+    if not arcpy.Exists(reach_hydroline_fc):
 
-    # create output invalid reach table
-    invalid_tbl = arcpy.CreateTable_management(
-        out_path=os.path.dirname(output_invalid_reach_table),
-        out_name=os.path.basename(output_invalid_reach_table)
-    )
+        # create output hydroline feature class
+        hydroline_fc = arcpy.CreateFeatureclass_management(
+            out_path=os.path.dirname(reach_hydroline_fc),
+            out_name=os.path.basename(reach_hydroline_fc),
+            geometry_type='POLYLINE',
+            spatial_reference=arcpy.Describe(access_lyr).spatialReference
+        )[0]
 
-    # add field for the awid in both the output feature class and invalid table
-    for table in [hydroline_fc, invalid_tbl]:
+        # add awid field
         arcpy.AddField_management(
-            in_table=table,
+            in_table=hydroline_fc,
             field_name='awid',
             field_type='TEXT',
             field_length=10
         )
 
-    # add field in invalid table for reason
-    arcpy.AddField_management(
-        in_table=invalid_tbl,
-        field_name='reason',
-        field_type='TEXT',
-        field_length=100
-    )
+    # if the invalid table does not already exist
+    if not arcpy.Exists(reach_invalid_tbl):
+
+        # create output invalid reach table
+        invalid_tbl = arcpy.CreateTable_management(
+            out_path=os.path.dirname(reach_invalid_tbl),
+            out_name=os.path.basename(reach_invalid_tbl)
+        )
+
+        # add field for the awid in the invalid table
+        arcpy.AddField_management(
+            in_table=invalid_tbl,
+            field_name='awid',
+            field_type='TEXT',
+            field_length=10
+        )
+
+        # add field in invalid table for reason
+        arcpy.AddField_management(
+            in_table=invalid_tbl,
+            field_name='reason',
+            field_type='TEXT',
+            field_length=100
+        )
 
     # keep providing updates
     arcpy.SetProgressor('step', 'Ready to see how many reaches we can process.', 0, len(awid_list), 1)
@@ -368,7 +388,7 @@ def get_reach_line_fc(access_fc, huc4_fc, hydro_network, output_hydroline_fc, ou
             arcpy.AddMessage('{} is valid, and will be processed.'.format(awid))
 
             # create an insert cursor
-            with arcpy.da.InsertCursor(output_hydroline_fc, ('awid', 'SHAPE@')) as cursor_valid:
+            with arcpy.da.InsertCursor(reach_hydroline_fc, ('awid', 'SHAPE@')) as cursor_valid:
 
                 # iterate the geometry objects in the list
                 for geometry in reach['geometry_list']:
@@ -383,7 +403,7 @@ def get_reach_line_fc(access_fc, huc4_fc, hydro_network, output_hydroline_fc, ou
         elif not reach['valid']:
 
             # create an insert cursor
-            with arcpy.da.InsertCursor(output_invalid_reach_table, ('awid', 'reason')) as cursor_invalid:
+            with arcpy.da.InsertCursor(reach_invalid_tbl, ('awid', 'reason')) as cursor_invalid:
 
                 # insert a record in the feature class for the geometry
                 cursor_invalid.insertRow((str(reach['awid']), reach['reason']))
