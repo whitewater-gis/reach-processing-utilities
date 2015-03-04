@@ -27,8 +27,8 @@ arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand 
 # collect input parameters and run functions
 reach_utlities.get_reach_line_fc(
     access_fc=arcpy.GetParameter(0),
-    huc4_fc=arcpy.GetParameter(1),
+    aoi_polygon=arcpy.GetParameter(1),
     hydro_network=arcpy.GetParameter(2),
-    output_hydroline_fc=arcpy.GetParameterAsText(3),
-    output_invalid_reach_table=arcpy.GetParameterAsText(4)
+    reach_hydroline_fc=arcpy.GetParameterAsText(3),
+    reach_invalid_tbl=arcpy.GetParameterAsText(4)
 )

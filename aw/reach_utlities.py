@@ -177,6 +177,7 @@ def validate_conicidence(reach_id, access_fc, hydro_network):
     else:
         return False
 
+
 def validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro_network):
     """
     Ensure the putin is indeed upstream of the takeout.
