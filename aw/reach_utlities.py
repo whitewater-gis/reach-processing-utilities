@@ -135,6 +135,7 @@ def validate_has_access(reach_id, access_fc):
         del access_lyr
         return False
 
+
 def validate_conicidence(reach_id, access_fc, hydro_network):
     """
     Ensure the putin and takeout are coincident with the USGS hydrolines. Just to compensate for error, the access
@@ -209,15 +210,14 @@ def validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro
     # if every hydroline segment is tested and none of them are coincident with the putin, return false
     return False
 
-
-def process_reach(reach_id, access_fc, hydro_network):
+def validate_reach(reach_id, access_fc, hydro_network):
     """
-    Get the hydroline geometry for the reach using the putin and takeout access points identified using the AW id.
+    Make sure the reach is valid.
     :param reach_id: The AW id for the reach.
     :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
                       takeout. These fields must store the AW id for the point role as a putin or takeout.
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
-    :return: Polyline Geometry object representing the reach hydroline.
+    :return: Boolean indicating if the reach is valid or not.
     """
     # ensure the reach has a putin and a takeout
     if not validate_has_access(reach_id, access_fc):
@@ -238,12 +238,30 @@ def process_reach(reach_id, access_fc, hydro_network):
     putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
 
     # ensure the putin is upstream of the takeout, and if valid, save upstream trace hydroline layer
-    valid_upstream_trace = validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro_network)
-    if not valid_upstream_trace:
+    if not validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro_network):
         arcpy.AddMessage(
             '{} putin does not appear to be upstream of takeout, and will not be processed.'.format(reach_id)
         )
         return {'valid': False, 'awid': reach_id, 'reason': 'putin not upstream of takeout'}
+
+
+def process_reach(reach_id, access_fc, hydro_network):
+    """
+    Get the hydroline geometry for the reach using the putin and takeout access points identified using the AW id.
+    :param reach_id: The AW id for the reach.
+    :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
+                      takeout. These fields must store the AW id for the point role as a putin or takeout.
+    :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
+    :return: Polyline Geometry object representing the reach hydroline.
+    """
+    # run validation tests
+    validation = validate_reach(reach_id, access_fc, hydro_network)
+
+    # if the reach does not validate
+    if not validation['valid']:
+
+        # return the reason for failing validation
+        return validation
 
     # trace downstream from the takeout
     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream', putin_geometry,
