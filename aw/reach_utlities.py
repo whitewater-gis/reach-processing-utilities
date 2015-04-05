@@ -296,7 +296,7 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
     # create access feature layer
     access_lyr = arcpy.MakeFeatureLayer_management(access_fc)[0]
 
-    # create huc4 layer
+    # create aoi layer
     aoi_lyr = arcpy.MakeFeatureLayer_management(aoi_polygon)[0]
 
     # select the accesses in the area of interest (typically selected subregions)
