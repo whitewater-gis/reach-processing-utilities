@@ -98,7 +98,7 @@ def get_subregion_data(huc4, output_dir):
     return output_gdb
 
 
-def validate_has_access(reach_id, access_fc):
+def _validate_has_access(reach_id, access_fc):
     """
     Ensure the specified reach has a putin and takeout.
     :param reach_id: The AW id for the reach.
@@ -136,7 +136,7 @@ def validate_has_access(reach_id, access_fc):
         return False
 
 
-def validate_conicidence(reach_id, access_fc, hydro_network):
+def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
     """
     Ensure the putin and takeout are coincident with the USGS hydrolines. Just to compensate for error, the access
     points will be snapped to the hydrolines if they are within 200 feet since there can be a slight discrepancy in
@@ -163,7 +163,7 @@ def validate_conicidence(reach_id, access_fc, hydro_network):
                                             "{} = '{}' OR {} = '{}'".format(sql_pi, reach_id, sql_to, reach_id))
 
     # snap the putin and takeout to the hydrolines
-    arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
+    arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '100 Feet']])
 
     # select by location, selecting accesses coincident with the hydrolines
     arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='SUBSET_SELECTION')
@@ -179,7 +179,7 @@ def validate_conicidence(reach_id, access_fc, hydro_network):
         return False
 
 
-def validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro_network):
+def _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
     """
     Ensure the putin is indeed upstream of the takeout.
     :param putin_geometry: Point Geometry object for the putin.
@@ -188,6 +188,10 @@ def validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro
     :return: boolean: Indicates if when tracing the geometric network upstream from the takeout, if the putin is
                       upstream from the takeout.
     """
+    # get geometry object for putin and takeout
+    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
+    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
+
     # trace upstream from the takeout
     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', takeout_geometry,
                                                          'TRACE_UPSTREAM')[0]
@@ -205,10 +209,11 @@ def validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro
         if putin_geometry.within(hydroline_geometry):
 
             # if coincident, return the upstream traced hydroline layer...exiting function
-            return hydroline_layer
+            return True
 
     # if every hydroline segment is tested and none of them are coincident with the putin, return false
     return False
+
 
 def validate_reach(reach_id, access_fc, hydro_network):
     """
@@ -220,32 +225,35 @@ def validate_reach(reach_id, access_fc, hydro_network):
     :return: Boolean indicating if the reach is valid or not.
     """
     # ensure the reach has a putin and a takeout
-    if not validate_has_access(reach_id, access_fc):
+    if not _validate_has_access(reach_id, access_fc):
         arcpy.AddMessage(
             '{} does not appear to have both a putin and takeout, and will not be processed.'.format(reach_id)
         )
         return {'valid': False, 'awid': reach_id, 'reason': 'does not have a access pair, both a putin and takeout'}
 
     # ensure the accesses are coincident with the hydrolines
-    if not validate_conicidence(reach_id, access_fc, hydro_network):
+    elif not _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
             '{} accesses do not appear to be coincident with hydrolines, and will not be processed.'.format(reach_id)
         )
         return {'valid': False, 'awid': reach_id, 'reason': 'accesses not coincident with hydrolines'}
 
-    # get geometry object for putin and takeout
-    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
-    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
-
     # ensure the putin is upstream of the takeout, and if valid, save upstream trace hydroline layer
-    if not validate_putin_upstream_from_takeout(putin_geometry, takeout_geometry, hydro_network):
+    elif not _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
             '{} putin does not appear to be upstream of takeout, and will not be processed.'.format(reach_id)
         )
         return {'valid': False, 'awid': reach_id, 'reason': 'putin not upstream of takeout'}
 
+    # if everything passes, return true
+    else:
+        arcpy.AddMessage(
+            '{} is valid, and will be processed.'.format(reach_id)
+        )
+        return {'valid': True}
 
-def process_reach(reach_id, access_fc, hydro_network):
+
+def _process_reach(reach_id, access_fc, hydro_network):
     """
     Get the hydroline geometry for the reach using the putin and takeout access points identified using the AW id.
     :param reach_id: The AW id for the reach.
@@ -263,19 +271,18 @@ def process_reach(reach_id, access_fc, hydro_network):
         # return the reason for failing validation
         return validation
 
-    # trace downstream from the takeout
-    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream', putin_geometry,
-                                                         'TRACE_DOWNSTREAM', )[0]
+    # get putin and takeout geometry
+    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
+    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
+
+    # trace network connecting the putin and the takeout, this returns all intersecting line segments
+    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
+                                                         [putin_geometry, takeout_geometry], 'FIND_PATH', )[0]
 
     # extract the flowline layer with upstream features selected from the group layer
     hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
 
-    # select by location to only get the intersecting segments from both the upstream and downstream traces
-    # this addresses the problem of braided streams tracing downstream past the takout
-    arcpy.SelectLayerByLocation_management(hydroline_layer, 'INTERSECT', valid_upstream_trace,
-                                           selection_type='SUBSET_SELECTION')
-
-    # dissolve into a single geometry object
+    # dissolve into minimum segments and save back into a geometry object
     hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
 
     # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles above and below the
@@ -307,8 +314,8 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
     :param access_lyr: The point feature class for accesses. There must be an attribute named putin and another named
                       takeout. These fields must store the AW id for the point role as a putin or takeout.
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
-    :param reach_hydroline_fc: This will be the output
-    :param reach_invalid_tbl:
+    :param reach_hydroline_fc: Output line feature class for output hydrolines.
+    :param reach_invalid_tbl: Output table listing invalid reaches with the reason.
     :return:
     """
     # create access feature layer
@@ -320,17 +327,11 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
     # select the accesses in the area of interest (typically selected subregions)
     arcpy.SelectLayerByLocation_management(access_lyr, 'INTERSECT', aoi_lyr)
 
-    # get list of AW id's from the takeouts not including the None values
-    awid_list = []
-    with arcpy.da.SearchCursor(access_lyr, 'takeout') as cursor:
-        for row in cursor:
-
-            # when in the file geodatabase, the values are none, but once in an SDE, they become zeros
-            if not (row[0] is None or int(row[0]) == 0):
-                awid_list.append(row[0])
+    # get list of AW id's from the takeouts not including the NULL or zero values
+    awid_list = [row[0] for row in arcpy.da.SearchCursor(access_lyr, 'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
 
     # give a little beta to the front end
-    arcpy.SetProgressor(type='default', message='{} reach id accesses successfully were located'.format(len(awid_list)))
+    arcpy.SetProgressor(type='default', message='{} reach id accesses successfully located'.format(len(awid_list)))
 
     # if the output hydrolines does not already exist
     if not arcpy.Exists(reach_hydroline_fc):
@@ -344,12 +345,7 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
         )[0]
 
         # add awid field
-        arcpy.AddField_management(
-            in_table=hydroline_fc,
-            field_name='awid',
-            field_type='TEXT',
-            field_length=10
-        )
+        arcpy.AddField_management(in_table=hydroline_fc, field_name='awid', field_type='TEXT', field_length=10)
 
     # if the invalid table does not already exist
     if not arcpy.Exists(reach_invalid_tbl):
@@ -361,20 +357,10 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
         )
 
         # add field for the awid in the invalid table
-        arcpy.AddField_management(
-            in_table=invalid_tbl,
-            field_name='awid',
-            field_type='TEXT',
-            field_length=10
-        )
+        arcpy.AddField_management(in_table=invalid_tbl, field_name='awid', field_type='TEXT', field_length=10)
 
         # add field in invalid table for reason
-        arcpy.AddField_management(
-            in_table=invalid_tbl,
-            field_name='reason',
-            field_type='TEXT',
-            field_length=100
-        )
+        arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=100)
 
     # keep providing updates
     arcpy.SetProgressor('step', 'Ready to see how many reaches we can process.', 0, len(awid_list), 1)
@@ -394,7 +380,7 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
         arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(awid, progressor_index, len(awid_list)))
 
         # process each reach
-        reach = process_reach(
+        reach = _process_reach(
             reach_id=awid,
             access_fc=access_lyr,
             hydro_network=hydro_network
@@ -402,9 +388,6 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
 
         # if the reach is valid
         if reach['valid']:
-
-            # message valid
-            arcpy.AddMessage('{} is valid, and will be processed.'.format(awid))
 
             # create an insert cursor
             with arcpy.da.InsertCursor(reach_hydroline_fc, ('awid', 'SHAPE@')) as cursor_valid:
@@ -432,7 +415,7 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
                                                                      len(awid_list)))
 
 
-def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
+def add_meta_to_hydrolines(hydroline_fc, meta_table):
     """
     After running the analysis to extract valid hydrolines, this adds the relevant metadata from the master metadata
     table.
@@ -441,7 +424,7 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
     :return: boolean: Success or failure.
     """
     # list of attribute fields to be added
-    attribute_list = (
+    attribute_list = [
         {'name': 'name_river', 'type': 'TEXT', 'length': 255},
         {'name': 'name_section', 'type': 'TEXT', 'length': 255},
         {'name': 'name_common', 'type': 'TEXT', 'length': 255},
@@ -449,7 +432,7 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
         {'name': 'difficulty_min', 'type': 'TEXT', 'length': 5},
         {'name': 'difficulty_max', 'type': 'TEXT', 'length': 5},
         {'name': 'difficulty_outlier', 'type': 'TEXT', 'length': 5}
-    )
+    ]
 
     # add all the fields to hydrolines
     for attribute in attribute_list:
@@ -464,10 +447,13 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
     # create table view for meta table
     meta_veiw = arcpy.MakeFeatureLayer_management(meta_table, 'meta_view')
 
+    # attributes to transfer for update cursor
+    attribute_name_list = ['awid'] + [attribute['name'] for attribute in attribute_list]
+
     # for every AW id found
     for awid in awid_list:
 
-        # create sql string
+        # create sql string to select the reach
         sql = "{} = '{}'".format(
             arcpy.AddFieldDelimiters(os.path.dirname(arcpy.Describe(hydroline_fc).catalogPath), 'awid'),
             awid
@@ -479,12 +465,7 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
         # select features in the meta view
         arcpy.SelectLayerByAttribute_management(meta_veiw, 'NEW_SELECTION', sql)
 
-        # attributes to transfer
-        attribute_name_list = ['awid']
-        for attr in attribute_list:
-            attribute_name_list.append(attribute_list['name'])
-
-        # load attributes from meta table into cursor
+        # load attributes from meta table into cursor and retrieve single record as row
         meta_values = [row for row in arcpy.da.SearchCursor(meta_veiw, attribute_name_list)][0]
 
         # use update cursor to populate the values in the feature class
@@ -498,3 +479,21 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table, out_point_fc):
 
                 # commit the changes
                 update_cursor.updateRow(row)
+
+    # return happy
+    return True
+
+
+def create_reach_centroid_feature_class(reach_hydroline_feature_class, output_reach_centroids):
+    """
+    Create a feature class consisting of little more than centroids for each reach for symbolizing at smaller scales.
+    :param reach_hydroline_feature_class: Reach hydroline feature class.
+    :param output_reach_centroids: Location and name for output point feature class.
+    :return: String path to output.
+    """
+    # make feature class using the input hydrolines for a schema template
+    arcpy.CreateFeatureclass_management(
+        out_path=os.path.dirname(output_reach_centroids),
+        out_name=os.path.basename(output_reach_centroids),
+        template=reach_hydroline_feature_class
+    )
