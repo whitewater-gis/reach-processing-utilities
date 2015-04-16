@@ -18,17 +18,19 @@ purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
     limitations under the License.
 """
 # import modules
-import arcpy
-import reach_utlities
+from arcpy import GetParameter
+from arcpy import GetParameterAsText
+from arcpy import SetProgressor
+from reach_utlities import get_reach_line_fc
 
-# provide a more intersting message
-arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
+# provide a more interesting message
+SetProgressor(type='default', message='firing up the redonkulator...stand by')
 
 # collect input parameters and run functions
-reach_utlities.get_reach_line_fc(
-    access_fc=arcpy.GetParameter(0),
-    aoi_polygon=arcpy.GetParameter(1),
-    hydro_network=arcpy.GetParameter(2),
-    reach_hydroline_fc=arcpy.GetParameterAsText(3),
-    reach_invalid_tbl=arcpy.GetParameterAsText(4)
+get_reach_line_fc(
+    access_fc=GetParameter(0),
+    aoi_polygon=GetParameter(1),
+    hydro_network=GetParameter(2),
+    reach_hydroline_fc=GetParameterAsText(3),
+    reach_invalid_tbl=GetParameterAsText(4)
 )
