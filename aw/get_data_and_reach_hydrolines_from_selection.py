@@ -30,21 +30,17 @@ output_dir = arcpy.GetParameterAsText(2)
 # provide a more intersting message
 arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
 
-# get the list of huc4 codes from the huc4 polygon layer
-huc4_list = [row[0] for row in arcpy.da.SearchCursor(huc4_layer, 'HUC4')]
+# get list of awid's selected from
 
-# test to make sure there are not more than 10 subregions
-if len(huc4_list) > 10:
-    arcpy.AddError('More than 10 subregions are selected. Please select 10 or fewer subregions.')
-
-# for every HUC
-for huc4 in huc4_list:
+# for every HUC selected
+for huc4 in [row[0] for row in arcpy.da.SearchCursor(huc4_layer, 'HUC4')]:
 
     # download and prep the data
     subregion_gdb = reach_utlities.get_subregion_data(
         huc4=huc4,
         output_dir=output_dir
     )
+
     # provide a more intersting message
     arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
 
