@@ -24,14 +24,15 @@ import os.path
 import time
 import ftplib
 import zipfile
+import re
 
 
-def get_subregion_data(huc4, output_dir):
+def _get_nhd_subregion(huc4, output_directory):
     """
     Download a subregion from the USGS, download it and set up the data for analysis.
     :param huc4: String four digit HUC to download
-    :param output_dir: Directory to store output geodatabase
-    :return: Boolean success or failure
+    :param output_fgdb: Directory where the downloaded subregion file geodatabase will be stored.
+    :return: String path to output file geodatabase.
     """
     # get path to scratch directory to store resources
     scratch_dir = arcpy.env.scratchFolder
@@ -56,46 +57,85 @@ def get_subregion_data(huc4, output_dir):
     zfile = zipfile.ZipFile(temp_zip)
 
     # extract all the contents to the output directory
-    zfile.extractall(output_dir)
+    zfile.extractall(scratch_dir)
 
     # unzip the archive to the temp directory
     zfile = zipfile.ZipFile(temp_zip)
 
     # extract all the contents to the output directory
-    zfile.extractall(output_dir)
+    zfile.extractall(output_directory)
 
-    # create the final output geodatabase
-    output_gdb = arcpy.CreateFileGDB_management(output_dir, '{}.gdb'.format(huc4))[0]
+    # return the path to the subregion gdb
+    return os.path.join(output_directory, 'NHDH{}.gdb'.format(huc4))
 
-    # For some reason, copy keeps bombing with the geometric network, so copy the feature dataset first. Then delete
-    # everything from the geodatabase not directly required for the analysis we need to do. True, this is not the most
-    # efficient method...but given the circumstances, at least it works.
-    # copy the geometric network into the output geodatabase
-    arcpy.Copy_management(
-        os.path.join(output_dir, 'NHDH{}.gdb'.format(huc4), 'Hydrography'),
-        os.path.join(output_gdb, 'Hydrography')
-    )
 
-    # use walk to iterate everything in the geodatabase
-    for parent_dir, dir_list, obj_list in arcpy.da.Walk(output_gdb):
+def _append_subregion_data(nhd_subregion_fgdb, master_geodatabase):
+    """
+    Append the hydrolines from a downloaded USGS NHD subregion geodatabase to a master dataset.
+    :param nhd_subregion_fgdb: USGS NHD subregion geodatabase downloaded from the USGS.
+    :param master_geodatabase: Master geodatabase storing the NHD data.
+    :return:
+    """
+
+    # variable for the full path to the NHD Flowline feature class
+    source_hydroline = os.path.join(nhd_subregion_fgdb, 'Hydrography', 'NHDFlowline')
+
+    # get path to output paths, taking into account it may be in an SDE
+    for top_dir, dir_list, obj_list in arcpy.da.Walk(master_geodatabase):
         for obj in obj_list:
 
-            # if the object encountered is not one of the four objects we need to retain, toss it
-            if obj != 'Hydrography' and obj != 'HYDRO_NET' and obj != 'HYDRO_NET_Junctions' and obj != 'NHDFlowline':
-                arcpy.Delete_management(os.path.join(parent_dir, obj))
+            # use regular expression matching to find NHDFlowline
+            if re.match(r'^.*NHDFlowline', obj):
 
-    # extract out the only the huc4 polygon
-    arcpy.Select_analysis(
-        os.path.join(output_dir, 'NHDH{}.gdb'.format(huc4), 'WBD', 'WBDHU4'),
-        os.path.join(output_gdb, 'WBDHU4'),
-        "HUC4 = '{}'".format(huc4)
+                # full path to target hydroline feature class
+                target_hydroline = '{}\{}'.format(top_dir, obj)
+
+    # create editor object for target geodatabase
+    edit = arcpy.da.Editor(master_geodatabase)
+
+    # start editing not using undo option and immediately committing edits if in an SDE
+    edit.startEditing(
+        with_undo=False,
+        multiuser_mode=arcpy.Describe(master_geodatabase).workspaceType == 'RemoteDatabase'
     )
 
-    # delete the staging geodatabase
-    arcpy.Delete_management(os.path.join(output_dir, 'NHDH{}.gdb'.format(huc4)))
+    # start an edit operation
+    edit.startOperation()
 
-    # return the path to the geodatabase
-    return output_gdb
+    # append features for subregion
+    arcpy.Append_management(
+        inputs=source_hydroline,
+        target=target_hydroline
+    )
+
+    # end the edit operation
+    edit.endOperation()
+
+    # stop editing
+    edit.stopEditing(save_changes=True)
+
+    # return to be complete
+    return
+
+
+def get_and_append_subregion_data(huc4, master_geodatabase):
+    """
+    Download a subregion from the USGS, download it and set up the data for analysis.
+    :param huc4: String four digit HUC to download
+    :param master_geodatabase: Master geodatabase where data likely will reside.
+    :return:
+    """
+    # download the data and save the file geodatabase in the scratch directory
+    usgs_subregion_fgdb = _get_nhd_subregion(huc4, arcpy.env.scratchFolder)
+
+    # append the data to an existing geodatabase
+    _append_subregion_data(usgs_subregion_fgdb, master_geodatabase)
+
+    # delete the staging geodatabases
+    arcpy.Delete_management(usgs_subregion_fgdb)
+
+    # return to be complete
+    return
 
 
 def _validate_has_access(reach_id, access_fc):

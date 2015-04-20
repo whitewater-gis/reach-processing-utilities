@@ -20,23 +20,32 @@ purpose:    Provide a tool wrapper for downloading subregion data from the USGS 
 # import modules
 import arcpy
 import reach_utlities
-
-# provide a more intersting message
-arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
+import re
 
 # get the list of huc4 codes from the huc4 polygon layer
 huc4_layer = arcpy.GetParameter(0)
 huc4_list = [row[0] for row in arcpy.da.SearchCursor(huc4_layer, 'HUC4')]
 
-# test to make sure there are not more than 10 subregions
-if len(huc4_list) > 10:
-    arcpy.AddError('More than 10 subregions are selected. Please select 10 or fewer subregions.')
-
 # for every HUC
 for huc4 in huc4_list:
 
-    # download and prep the data
-    reach_utlities.get_subregion_data(
+    # download, prep and append the data to the master dataset
+    reach_utlities.get_and_append_subregion_data(
         huc4=huc4,
-        output_dir=arcpy.GetParameterAsText(1)
+        master_geodatabase=arcpy.GetParameterAsText(1)
     )
+
+    # get path to output paths, taking into account it may be in an SDE
+    for top_dir, dir_list, obj_list in arcpy.da.Walk(arcpy.GetParameterAsText(1)):
+
+        # iterate the objects
+        for obj in obj_list:
+
+            # use regular expression matching to filter out HYDRO_NET
+            if re.match(r'^.+HYDRO_NET', obj):
+
+                # save full path to a variable
+                hydro_net = '{}\{}'.format(top_dir, obj)
+
+    # update the geometric network with the flow direction
+    arcpy.SetFlowDirection_management(hydro_net, 'WITH_DIGITIZED_DIRECTION')
