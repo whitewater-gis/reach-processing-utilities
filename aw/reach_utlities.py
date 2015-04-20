@@ -1,5 +1,5 @@
 """
-author:     Joel McCune (joel.mccune+aw@gmail.com)
+author:     Joel McCune (joel.mccune+gis@gmail.com)
 dob:        03 Dec 2014
 purpose:    Provide the utilities to clean up and enhance the spatial component of the American Whitewater reaches
             data set.

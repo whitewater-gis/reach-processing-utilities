@@ -1,5 +1,5 @@
 """
-author:     Joel McCune (joel.mccune+aw@gmail.com)
+author:     Joel McCune (joel.mccune+gis@gmail.com)
 dob:        04 Dec 2014
 purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
 
