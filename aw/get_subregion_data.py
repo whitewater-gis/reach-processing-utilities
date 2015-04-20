@@ -18,20 +18,17 @@ purpose:    Provide a tool wrapper for downloading subregion data from the USGS 
     limitations under the License.
 """
 # import modules
-import arcpy
-import reach_utlities
-
-# provide a more intersting message
-arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
+from arcpy import GetParameterAsText
+from reach_utlities import get_and_append_subregion_data, update_flow_direction
 
 # save path to geodatabase in a variable
-sde = arcpy.GetParameterAsText(1)
+sde = GetParameterAsText(1)
 
 # download the data from the USGS and append it to the master geodatabase
-reach_utlities.get_and_append_subregion_data(
-    huc4=arcpy.GetParameterAsText(0),
+get_and_append_subregion_data(
+    huc4=GetParameterAsText(0),
     master_geodatabase=sde
 )
 
 # update the flow direction
-reach_utlities.update_flow_direction(sde)
+update_flow_direction(sde)
