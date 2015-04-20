@@ -20,7 +20,6 @@ purpose:    Provide a tool wrapper for downloading subregion data from the USGS 
 # import modules
 import arcpy
 import reach_utlities
-import re
 
 # provide a more intersting message
 arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand by')
@@ -28,29 +27,11 @@ arcpy.SetProgressor(type='default', message='firing up the redonkulator...stand 
 # save path to geodatabase in a variable
 sde = arcpy.GetParameterAsText(1)
 
-# collect input parameters and run functions
+# download the data from the USGS and append it to the master geodatabase
 reach_utlities.get_and_append_subregion_data(
     huc4=arcpy.GetParameterAsText(0),
     master_geodatabase=sde
 )
 
-# get network path taking into account it may be in an SDE
-for top_dir, dir_list, obj_list in arcpy.da.Walk(sde):
-
-    # iterate the objects
-    for obj in obj_list:
-
-        # use regular expression matching to filter out HYDRO_NET
-        if re.match(r'^.+HYDRO_NET', obj):
-
-            # save full path to a variable
-            hydro_net = '{}\{}'.format(top_dir, obj)
-
-        # if the hydro net does not exist
-        else:
-
-            # throw an error
-            raise Exception('HYDRO_NET geometric network does not appear to exist in {}'.format(sde))
-
-# update the geometric network with the flow direction
-arcpy.SetFlowDirection_management(hydro_net, 'WITH_DIGITIZED_DIRECTION')
+# update the flow direction
+reach_utlities.update_flow_direction(sde)

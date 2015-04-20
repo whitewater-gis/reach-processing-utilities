@@ -90,32 +90,42 @@ def _append_subregion_data(nhd_subregion_fgdb, master_geodatabase):
                 # full path to target hydroline feature class
                 target_hydroline = '{}\{}'.format(top_dir, obj)
 
-    # create editor object for target geodatabase
-    edit = arcpy.da.Editor(master_geodatabase)
-
-    # start editing not using undo option and immediately committing edits if in an SDE
-    edit.startEditing(
-        with_undo=False,
-        multiuser_mode=arcpy.Describe(master_geodatabase).workspaceType == 'RemoteDatabase'
-    )
-
-    # start an edit operation
-    edit.startOperation()
-
     # append features for subregion
     arcpy.Append_management(
         inputs=source_hydroline,
         target=target_hydroline
     )
 
-    # end the edit operation
-    edit.endOperation()
-
-    # stop editing
-    edit.stopEditing(save_changes=True)
-
     # return to be complete
     return
+
+
+def update_flow_direction(master_geodatabase):
+    """
+    Update the flow direcation for HYDRO_NET geometric network.
+    :param master_geodatabase: The master geodatabase where all the NHD flowlines are being stored.
+    :return:
+    """
+    # get network path taking into account it may be in an SDE
+    for top_dir, dir_list, obj_list in arcpy.da.Walk(master_geodatabase):
+
+        # iterate the objects
+        for obj in obj_list:
+
+            # use regular expression matching to filter out HYDRO_NET
+            if re.match(r'^.+HYDRO_NET', obj):
+
+                # save full path to a variable
+                hydro_net = '{}\{}'.format(top_dir, obj)
+
+            # if the hydro net does not exist
+            else:
+
+                # throw an error
+                raise Exception('HYDRO_NET geometric network does not appear to exist in {}'.format(sde))
+
+    # update the geometric network with the flow direction
+    arcpy.SetFlowDirection_management(hydro_net, 'WITH_DIGITIZED_DIRECTION')
 
 
 def get_and_append_subregion_data(huc4, master_geodatabase):
@@ -135,6 +145,44 @@ def get_and_append_subregion_data(huc4, master_geodatabase):
     arcpy.Delete_management(usgs_subregion_fgdb)
 
     # return to be complete
+    return
+
+
+def update_download_tracking(hydrolines_feature_class, huc4_feature_class):
+    """
+    Update an integer field with boolean values in the huc4 feature class, flowlines_downloaded, to track downloaded
+    subregions.
+    :param hydrolines_feature_class: Hydrolines representing the
+    :param huc4_feature_class:
+    :return:
+    """
+
+    # list comprehension enclosed in set slicing off first four characters of huc codes for hydrolines, creating
+    # unique list of four digit huc codes
+    subregion_code_list = set([row[0][0:4] for row in arcpy.da.SearchCursor(hydrolines_feature_class, 'reachcode')])
+
+    # create update cursor
+    with arcpy.da.UpdateCursor(huc4_feature_class, ['huc4', 'flowlines_downloaded']) as update_cursor:
+
+        # for every row in the table
+        for row in update_cursor:
+
+            # set the row initially to falsy
+            row[1] = 0
+
+            # test the current subregion against the hydrolines code list
+            for code in subregion_code_list:
+
+                # if the code exists
+                if code == row[0]:
+
+                    # update the row truthy
+                    row[1] = 1
+
+            # update the row
+            update_cursor.updateRow(row)
+
+    # return...just because
     return
 
 
@@ -255,7 +303,7 @@ def _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
     return False
 
 
-def validate_reach(reach_id, access_fc, hydro_network):
+def _validate_reach(reach_id, access_fc, hydro_network):
     """
     Make sure the reach is valid.
     :param reach_id: The AW id for the reach.
@@ -303,7 +351,7 @@ def _process_reach(reach_id, access_fc, hydro_network):
     :return: Polyline Geometry object representing the reach hydroline.
     """
     # run validation tests
-    validation = validate_reach(reach_id, access_fc, hydro_network)
+    validation = _validate_reach(reach_id, access_fc, hydro_network)
 
     # if the reach does not validate
     if not validation['valid']:
@@ -368,7 +416,8 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
     arcpy.SelectLayerByLocation_management(access_lyr, 'INTERSECT', aoi_lyr)
 
     # get list of AW id's from the takeouts not including the NULL or zero values
-    awid_list = [row[0] for row in arcpy.da.SearchCursor(access_lyr, 'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
+    awid_list = [row[0] for row in arcpy.da.SearchCursor(access_lyr,
+                                                         'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
 
     # give a little beta to the front end
     arcpy.SetProgressor(type='default', message='{} reach id accesses successfully located'.format(len(awid_list)))
