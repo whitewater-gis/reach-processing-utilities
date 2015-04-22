@@ -34,6 +34,9 @@ def _get_nhd_subregion(huc4, output_directory):
     :param output_fgdb: Directory where the downloaded subregion file geodatabase will be stored.
     :return: String path to output file geodatabase.
     """
+    # add a little information to the user
+    arcpy.AddMessage('Downloading data from the USGS for subregion {}'.format(huc4))
+
     # get path to scratch directory to store resources
     scratch_dir = arcpy.env.scratchFolder
 
@@ -69,13 +72,15 @@ def _get_nhd_subregion(huc4, output_directory):
     return os.path.join(output_directory, 'NHDH{}.gdb'.format(huc4))
 
 
-def _append_subregion_data(nhd_subregion_fgdb, master_geodatabase):
+def append_subregion_data(nhd_subregion_fgdb, master_geodatabase):
     """
     Append the hydrolines from a downloaded USGS NHD subregion geodatabase to a master dataset.
     :param nhd_subregion_fgdb: USGS NHD subregion geodatabase downloaded from the USGS.
     :param master_geodatabase: Master geodatabase storing the NHD data.
     :return:
     """
+    # provide a little user information
+    arcpy.AddMessage('Appending data from {}'.format(os.path.basename(nhd_subregion_fgdb)))
 
     # variable for the full path to the NHD Flowline feature class
     source_hydroline = os.path.join(nhd_subregion_fgdb, 'Hydrography', 'NHDFlowline')
@@ -90,11 +95,22 @@ def _append_subregion_data(nhd_subregion_fgdb, master_geodatabase):
                 # full path to target hydroline feature class
                 target_hydroline = '{}\{}'.format(top_dir, obj)
 
+    # set the environment variable to leave indexes untouched during processing...this allows features to be appended
+    arcpy.env.maintainSpatialIndex = True
+
     # append features for subregion
     arcpy.Append_management(
         inputs=source_hydroline,
         target=target_hydroline
     )
+
+    # TODO: get rebuild indexes working & add analyze!
+    # rebuild indexes for this feature class, excluding system tables since using the data owner connection
+    # arcpy.RebuildIndexes_management(
+    #     input_database=master_geodatabase,
+    #     include_system=False,
+    #     in_datasets=target_hydroline
+    # )
 
     # return to be complete
     return
@@ -106,6 +122,9 @@ def update_flow_direction(master_geodatabase):
     :param master_geodatabase: The master geodatabase where all the NHD flowlines are being stored.
     :return:
     """
+    # provide a little information
+    arcpy.AddMessage("Updating geometric network flow direction.")
+
     # get network path taking into account it may be in an SDE
     for top_dir, dir_list, obj_list in arcpy.da.Walk(master_geodatabase):
 
@@ -139,9 +158,9 @@ def get_and_append_subregion_data(huc4, master_geodatabase):
     usgs_subregion_fgdb = _get_nhd_subregion(huc4, arcpy.env.scratchFolder)
 
     # append the data to an existing geodatabase
-    _append_subregion_data(usgs_subregion_fgdb, master_geodatabase)
+    append_subregion_data(usgs_subregion_fgdb, master_geodatabase)
 
-    # delete the staging geodatabases
+    # delete the staging geodatabase
     arcpy.Delete_management(usgs_subregion_fgdb)
 
     # return to be complete
@@ -396,7 +415,7 @@ def _process_reach(reach_id, access_fc, hydro_network):
     }
 
 
-def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
+def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
     """
     Get an output reach feature class using an access feature class with putins and takeouts.
     :param access_lyr: The point feature class for accesses. There must be an attribute named putin and another named
@@ -408,12 +427,6 @@ def get_reach_line_fc(access_fc, aoi_polygon, hydro_network, reach_hydroline_fc,
     """
     # create access feature layer
     access_lyr = arcpy.MakeFeatureLayer_management(access_fc)[0]
-
-    # create huc4 layer
-    aoi_lyr = arcpy.MakeFeatureLayer_management(aoi_polygon)[0]
-
-    # select the accesses in the area of interest (typically selected subregions)
-    arcpy.SelectLayerByLocation_management(access_lyr, 'INTERSECT', aoi_lyr)
 
     # get list of AW id's from the takeouts not including the NULL or zero values
     awid_list = [row[0] for row in arcpy.da.SearchCursor(access_lyr,
