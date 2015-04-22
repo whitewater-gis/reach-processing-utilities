@@ -141,7 +141,7 @@ def update_flow_direction(master_geodatabase):
             else:
 
                 # throw an error
-                raise Exception('HYDRO_NET geometric network does not appear to exist in {}'.format(sde))
+                raise Exception('HYDRO_NET geometric network does not appear to exist in {}'.format(master_geodatabase))
 
     # update the geometric network with the flow direction
     arcpy.SetFlowDirection_management(hydro_net, 'WITH_DIGITIZED_DIRECTION')
@@ -220,7 +220,7 @@ def _validate_has_access(reach_id, access_fc):
     arcpy.env.overwriteOutput = True
 
     # make a feature layer for accesses
-    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access')
+    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_validatae')
 
     # rather than duplicating code, just use this embedded function
     def get_access_count(layer, access_type, awid):
@@ -418,18 +418,15 @@ def _process_reach(reach_id, access_fc, hydro_network):
 def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
     """
     Get an output reach feature class using an access feature class with putins and takeouts.
-    :param access_lyr: The point feature class for accesses. There must be an attribute named putin and another named
+    :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
                       takeout. These fields must store the AW id for the point role as a putin or takeout.
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
     :param reach_hydroline_fc: Output line feature class for output hydrolines.
     :param reach_invalid_tbl: Output table listing invalid reaches with the reason.
     :return:
     """
-    # create access feature layer
-    access_lyr = arcpy.MakeFeatureLayer_management(access_fc)[0]
-
     # get list of AW id's from the takeouts not including the NULL or zero values
-    awid_list = [row[0] for row in arcpy.da.SearchCursor(access_lyr,
+    awid_list = [row[0] for row in arcpy.da.SearchCursor(access_fc,
                                                          'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
 
     # give a little beta to the front end
@@ -443,7 +440,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             out_path=os.path.dirname(reach_hydroline_fc),
             out_name=os.path.basename(reach_hydroline_fc),
             geometry_type='POLYLINE',
-            spatial_reference=arcpy.Describe(access_lyr).spatialReference
+            spatial_reference=arcpy.Describe(access_fc).spatialReference
         )[0]
 
         # add awid field
@@ -484,7 +481,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
         # process each reach
         reach = _process_reach(
             reach_id=awid,
-            access_fc=access_lyr,
+            access_fc=access_fc,
             hydro_network=hydro_network
         )
 

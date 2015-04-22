@@ -22,7 +22,7 @@ purpose:    Test the utilities to clean up and enhance the spatial component of 
 # import modules
 import unittest
 import arcpy
-import reach_utlities
+import reach_utilities
 import itertools
 import os.path
 
@@ -34,6 +34,18 @@ test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
 
 
+class TestCaseDownloadSmallest(unittest.TestCase):
+
+    def test_download_from_usgs(self):
+
+        subregion_huc4 = '2003'
+        output_directory = r'D:\spatialData\aw\scratch'
+
+        fgdb = reach_utilities._get_nhd_subregion(subregion_huc4, output_directory)
+
+        self.assertTrue(arcpy.Exists(fgdb))
+
+
 class TestCaseSingleReach(unittest.TestCase):
 
     # single reach id known to be valid
@@ -41,7 +53,7 @@ class TestCaseSingleReach(unittest.TestCase):
 
     def test_reach_has_putin_and_takeout(self):
 
-        status = reach_utlities._validate_has_access(
+        status = reach_utilities._validate_has_access(
             reach_id=self.single_reach_id,
             access_fc=access_fc
         )
@@ -49,13 +61,13 @@ class TestCaseSingleReach(unittest.TestCase):
 
     def test_reach_accesses_coincident(self):
         self.assertTrue(
-            reach_utlities._validate_putin_takeout_conicidence(single_reach_id, access_fc, hydro_net),
+            reach_utilities._validate_putin_takeout_conicidence(single_reach_id, access_fc, hydro_net),
             'Reach id {} appears to have a putin and takeout.'.format(single_reach_id)
         )
 
     def test_reach_putin_upstream_from_takeout(self):
         self.assertTrue(
-            reach_utlities._validate_putin_upstream_from_takeout(
+            reach_utilities._validate_putin_upstream_from_takeout(
                 reach_id=self.single_reach_id,
                 access_fc=access_fc,
                 hydro_network=hydro_net
@@ -64,7 +76,7 @@ class TestCaseSingleReach(unittest.TestCase):
         )
 
     def test_get_reach_geometry(self):
-        reach = reach_utlities._process_reach(
+        reach = reach_utilities._process_reach(
             reach_id=self.single_reach_id,
             access_fc=access_fc,
             hydro_network=hydro_net
@@ -112,7 +124,7 @@ class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
         huc4_sel = arcpy.MakeFeatureLayer_management(huc4, 'huc4_aoi', "huc4 = '1710'")
 
         # run the analysis
-        reach_utlities.get_reach_line_fc(access_fc_temp, huc4_sel, hydro_net, reach_hydroline, reach_invalid_out)
+        reach_utilities.get_reach_line_fc(access_fc_temp, huc4_sel, hydro_net, reach_hydroline, reach_invalid_out)
 
         # combine the output record length of valid and invalid, it should be 69
         total_processed = (int(arcpy.GetCount_management(reach_hydroline)[0]) +
