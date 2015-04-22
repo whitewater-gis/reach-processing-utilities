@@ -223,10 +223,10 @@ def _validate_has_access(reach_id, access_fc):
     access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_validatae')
 
     # rather than duplicating code, just use this embedded function
-    def get_access_count(layer, access_type, awid):
+    def get_access_count(layer, access_type, reach_id):
 
         # create the sql string taking into account the location of the data
-        sql = "{} = '{}'".format(arcpy.AddFieldDelimiters(path, access_type), awid)
+        sql = "{} = '{}'".format(arcpy.AddFieldDelimiters(path, access_type), reach_id)
 
         # select features from the layer
         arcpy.SelectLayerByAttribute_management(in_layer_or_view=layer, where_clause=sql)
@@ -336,21 +336,21 @@ def _validate_reach(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
             '{} does not appear to have both a putin and takeout, and will not be processed.'.format(reach_id)
         )
-        return {'valid': False, 'awid': reach_id, 'reason': 'does not have a access pair, both a putin and takeout'}
+        return {'valid': False, 'reach_id': reach_id, 'reason': 'does not have a access pair, both a putin and takeout'}
 
     # ensure the accesses are coincident with the hydrolines
     elif not _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
             '{} accesses do not appear to be coincident with hydrolines, and will not be processed.'.format(reach_id)
         )
-        return {'valid': False, 'awid': reach_id, 'reason': 'accesses not coincident with hydrolines'}
+        return {'valid': False, 'reach_id': reach_id, 'reason': 'accesses not coincident with hydrolines'}
 
     # ensure the putin is upstream of the takeout, and if valid, save upstream trace hydroline layer
     elif not _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
             '{} putin does not appear to be upstream of takeout, and will not be processed.'.format(reach_id)
         )
-        return {'valid': False, 'awid': reach_id, 'reason': 'putin not upstream of takeout'}
+        return {'valid': False, 'reach_id': reach_id, 'reason': 'putin not upstream of takeout'}
 
     # if everything passes, return true
     else:
@@ -410,7 +410,7 @@ def _process_reach(reach_id, access_fc, hydro_network):
     # assemble into a success dictionary and return result
     return {
         'valid': True,
-        'awid': reach_id,
+        'reach_id': reach_id,
         'geometry_list': hydroline_geometry
     }
 
@@ -426,11 +426,11 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     :return:
     """
     # get list of AW id's from the takeouts not including the NULL or zero values
-    awid_list = [row[0] for row in arcpy.da.SearchCursor(access_fc,
+    reach_id_list = [row[0] for row in arcpy.da.SearchCursor(access_fc,
                                                          'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
 
     # give a little beta to the front end
-    arcpy.SetProgressor(type='default', message='{} reach id accesses successfully located'.format(len(awid_list)))
+    arcpy.SetProgressor(type='default', message='{} reach id accesses successfully located'.format(len(reach_id_list)))
 
     # if the output hydrolines does not already exist
     if not arcpy.Exists(reach_hydroline_fc):
@@ -443,8 +443,8 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             spatial_reference=arcpy.Describe(access_fc).spatialReference
         )[0]
 
-        # add awid field
-        arcpy.AddField_management(in_table=hydroline_fc, field_name='awid', field_type='TEXT', field_length=10)
+        # add reach id field
+        arcpy.AddField_management(in_table=hydroline_fc, field_name='reach_id', field_type='TEXT', field_length=10)
 
     # if the invalid table does not already exist
     if not arcpy.Exists(reach_invalid_tbl):
@@ -455,32 +455,32 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             out_name=os.path.basename(reach_invalid_tbl)
         )
 
-        # add field for the awid in the invalid table
-        arcpy.AddField_management(in_table=invalid_tbl, field_name='awid', field_type='TEXT', field_length=10)
+        # add field for the reach id in the invalid table
+        arcpy.AddField_management(in_table=invalid_tbl, field_name='reach_id', field_type='TEXT', field_length=10)
 
         # add field in invalid table for reason
         arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=100)
 
     # keep providing updates
-    arcpy.SetProgressor('step', 'Ready to see how many reaches we can process.', 0, len(awid_list), 1)
+    arcpy.SetProgressor('step', 'Ready to see how many reaches we can process.', 0, len(reach_id_list), 1)
 
     # progressor trackers
     progressor_index = 0
     valid_count = 0
 
     # for every reach
-    for awid in awid_list:
+    for reach_id in reach_id_list:
 
         # index the progressor tracker
         progressor_index += 1
 
         # provide updates
         arcpy.SetProgressorPosition(progressor_index)
-        arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(awid, progressor_index, len(awid_list)))
+        arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(reach_id, progressor_index, len(reach_id_list)))
 
         # process each reach
         reach = _process_reach(
-            reach_id=awid,
+            reach_id=reach_id,
             access_fc=access_fc,
             hydro_network=hydro_network
         )
@@ -489,13 +489,13 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
         if reach['valid']:
 
             # create an insert cursor
-            with arcpy.da.InsertCursor(reach_hydroline_fc, ('awid', 'SHAPE@')) as cursor_valid:
+            with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'SHAPE@')) as cursor_valid:
 
                 # iterate the geometry objects in the list
                 for geometry in reach['geometry_list']:
 
                     # insert a record in the feature class for the geometry
-                    cursor_valid.insertRow((reach['awid'], geometry))
+                    cursor_valid.insertRow((reach['reach_id'], geometry))
 
             # increment the valid counter
             valid_count += 1
@@ -504,21 +504,21 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
         elif not reach['valid']:
 
             # create an insert cursor
-            with arcpy.da.InsertCursor(reach_invalid_tbl, ('awid', 'reason')) as cursor_invalid:
+            with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason')) as cursor_invalid:
 
                 # insert a record in the feature class for the geometry
-                cursor_invalid.insertRow((str(reach['awid']), reach['reason']))
+                cursor_invalid.insertRow((str(reach['reach_id']), reach['reason']))
 
     # at the very end, report the success rate
-    arcpy.AddMessage('{}% ({}/{}) of reaches were processed.'.format(valid_count/len(awid_list)*100, valid_count,
-                                                                     len(awid_list)))
+    arcpy.AddMessage('{}% ({}/{}) of reaches were processed.'.format(valid_count/len(reach_id_list)*100, valid_count,
+                                                                     len(reach_id_list)))
 
 
 def add_meta_to_hydrolines(hydroline_fc, meta_table):
     """
     After running the analysis to extract valid hydrolines, this adds the relevant metadata from the master metadata
     table.
-    :param hydroline_fc: The output from getting the hydrolines above with an awid field.
+    :param hydroline_fc: The output from getting the hydrolines above with an reach id field.
     :param meta_table: The master reach metadata table created from the original reach extract.
     :return: boolean: Success or failure.
     """
@@ -538,7 +538,7 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table):
         arcpy.AddField_management(hydroline_fc, attribute['name'], attribute['type'], field_length=attribute['length'])
 
     # get list of all AW id's
-    awid_list = set([row[0] for row in arcpy.da.SearchCursor(hydroline_fc, 'awid')])
+    reach_id_list = set([row[0] for row in arcpy.da.SearchCursor(hydroline_fc, 'reach_id')])
 
     # create a layer for the hydroline feature class
     hydroline_lyr = arcpy.MakeFeatureLayer_management(hydroline_fc, 'hydroline_lyr')
@@ -547,15 +547,15 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table):
     meta_veiw = arcpy.MakeFeatureLayer_management(meta_table, 'meta_view')
 
     # attributes to transfer for update cursor
-    attribute_name_list = ['awid'] + [attribute['name'] for attribute in attribute_list]
+    attribute_name_list = ['reach_id'] + [attribute['name'] for attribute in attribute_list]
 
     # for every AW id found
-    for awid in awid_list:
+    for reach_id in reach_id_list:
 
         # create sql string to select the reach
         sql = "{} = '{}'".format(
-            arcpy.AddFieldDelimiters(os.path.dirname(arcpy.Describe(hydroline_fc).catalogPath), 'awid'),
-            awid
+            arcpy.AddFieldDelimiters(os.path.dirname(arcpy.Describe(hydroline_fc).catalogPath), 'reach_id'),
+            reach_id
         )
 
         # select features in the hydroline feature class
