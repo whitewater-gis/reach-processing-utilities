@@ -20,7 +20,7 @@ purpose:    Provide a tool wrapper for downloading subregion data from the USGS 
 # import minimal modules
 from arcpy import da, GetParameter, GetParameterAsText
 
-from utilities.reach_processing import get_and_append_subregion_data, update_flow_direction
+from utilities import get_and_append_subregion_data, update_flow_direction
 
 
 # get the list of huc4 codes from the huc4 polygon layer

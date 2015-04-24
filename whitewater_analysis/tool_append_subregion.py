@@ -19,9 +19,7 @@ purpose:    Provide a tool wrapper for appending data to the master dataset and 
 """
 # import modules
 from arcpy import GetParameterAsText
-
-from whitewater_analysis.utilities.reach_utilities import append_subregion_data
-
+from utilities import append_subregion_data
 
 # save path to geodatabase in a variable
 sde = GetParameterAsText(1)

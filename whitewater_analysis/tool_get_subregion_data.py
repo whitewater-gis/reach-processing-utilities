@@ -19,9 +19,7 @@ purpose:    Provide a tool wrapper for downloading subregion data from the USGS 
 """
 # import modules
 from arcpy import GetParameterAsText
-
 from utilities import get_and_append_subregion_data, update_flow_direction
-
 
 # save path to geodatabase in a variable
 sde = GetParameterAsText(1)

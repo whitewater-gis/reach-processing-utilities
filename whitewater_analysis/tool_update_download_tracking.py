@@ -19,9 +19,7 @@ purpose:    Provide a tool wrapper for updating the tracking field in the HUC4 f
 """
 # import modules
 from arcpy import GetParameterAsText
-
-from utilities.reach_processing import update_download_tracking
-
+from utilities import update_download_tracking
 
 # run function
 update_download_tracking(

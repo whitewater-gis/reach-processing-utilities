@@ -21,8 +21,7 @@ purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
 from arcpy import GetParameter
 from arcpy import GetParameterAsText
 from arcpy import SetProgressor
-
-from whitewater_analysis.utilities.reach_utilities import get_reach_line_fc
+from utilities import get_reach_line_fc
 
 
 # provide a more interesting message

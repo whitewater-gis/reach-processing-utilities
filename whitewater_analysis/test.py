@@ -19,20 +19,22 @@ purpose:    Test the utilities to clean up and enhance the spatial component of 
     limitations under the License.
 """
 
-# import modules
+# import system modules
 import unittest
 import itertools
 import os.path
-
 import arcpy
 
-from whitewater_analysis.utilities import reach_utilities
+# import local modules
+import utilities.nhd_data
+import utilities.validate
+import utilities.reach_processing
 
 
 # variables
-access_fc = r'D:\spatialData\aw\aw (owner).sde\aw.owner.accesses'
-hydro_net = r'D:\spatialData\aw\aw (owner).sde\aw.owner.Hydrography\aw.owner.HYDRO_NET'
-huc4 = r'D:\spatialData\aw\aw (owner).sde\aw.owner.WBDHU4'
+access_fc = r'D:\dev\reach-processing-tools\resources\aw (owner).sde\aw.owner.accesses'
+hydro_net = r'D:\dev\reach-processing-tools\resources\aw (owner).sde\aw.owner.Hydrography\aw.owner.HYDRO_NET'
+huc4 = r'D:\dev\reach-processing-tools\resources\aw (owner).sde\aw.owner.WBDHU4'
 test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
 
@@ -42,9 +44,9 @@ class TestCaseDownloadSmallest(unittest.TestCase):
     def test_download_from_usgs(self):
 
         subregion_huc4 = '2003'
-        output_directory = r'D:\spatialData\aw\scratch'
+        output_directory = r'D:\dev\reach-processing-tools\resources\scratch'
 
-        fgdb = reach_utilities._get_nhd_subregion(subregion_huc4, output_directory)
+        fgdb = utilities.nhd_data._get_nhd_subregion(subregion_huc4, output_directory)
 
         self.assertTrue(arcpy.Exists(fgdb))
 
@@ -56,30 +58,30 @@ class TestCaseSingleReach(unittest.TestCase):
 
     def test_reach_has_putin_and_takeout(self):
 
-        status = reach_utilities._validate_has_access(
+        status = utilities.validate._validate_has_access(
             reach_id=self.single_reach_id,
             access_fc=access_fc
         )
-        self.assertTrue(status, 'It appears there is not a putin and takeout for reach id {}'.format(single_reach_id))
+        self.assertTrue(status, 'It appears there is not a putin and takeout for reach id {}'.format(self.single_reach_id))
 
     def test_reach_accesses_coincident(self):
         self.assertTrue(
-            reach_utilities._validate_putin_takeout_conicidence(single_reach_id, access_fc, hydro_net),
-            'Reach id {} appears to have a putin and takeout.'.format(single_reach_id)
+            utilities.validate._validate_putin_takeout_conicidence(self.single_reach_id, access_fc, hydro_net),
+            'Reach id {} appears to have a putin and takeout.'.format(self.single_reach_id)
         )
 
     def test_reach_putin_upstream_from_takeout(self):
         self.assertTrue(
-            reach_utilities._validate_putin_upstream_from_takeout(
+            utilities.validate._validate_putin_upstream_from_takeout(
                 reach_id=self.single_reach_id,
                 access_fc=access_fc,
                 hydro_network=hydro_net
             ),
-            'The putin appears to be upstream of the takeout for reach id {}.'.format(single_reach_id)
+            'The putin appears to be upstream of the takeout for reach id {}.'.format(self.single_reach_id)
         )
 
     def test_get_reach_geometry(self):
-        reach = reach_utilities._process_reach(
+        reach = utilities.reach_processing._process_reach(
             reach_id=self.single_reach_id,
             access_fc=access_fc,
             hydro_network=hydro_net
@@ -90,7 +92,12 @@ class TestCaseSingleReach(unittest.TestCase):
             if not geometry.length:
                 status = False
 
-        self.assertTrue(status, 'At least one of the returned geometries appears not to have a length for reach id {}'.format(single_reach_id))
+        self.assertTrue(
+            status,
+            'At least one of the returned geometries appears not to have a length for reach id {}'.format(
+                self.single_reach_id
+            )
+        )
 
 
 class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
@@ -109,7 +116,7 @@ class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
 
     def test_get_reach_line_fc(self):
 
-        scratch_gdb = r'D:\spatialData\aw\scratch\data_scratch.gdb'
+        scratch_gdb = r'D:\dev\reach-processing-tools\resources\scratch\data_scratch.gdb'
         reach_hydroline = os.path.join(scratch_gdb, 'reach_test')
         reach_invalid_out = os.path.join(scratch_gdb, 'reach_test_invalid')
 
@@ -123,11 +130,8 @@ class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
         # get features in temporary features class
         access_fc_temp = arcpy.Select_analysis(access_fc, 'in_memory/access_subset', query)
 
-        # select the huc4 polygon for the aoi
-        huc4_sel = arcpy.MakeFeatureLayer_management(huc4, 'huc4_aoi', "huc4 = '1710'")
-
         # run the analysis
-        reach_utilities.get_reach_line_fc(access_fc_temp, huc4_sel, hydro_net, reach_hydroline, reach_invalid_out)
+        utilities.reach_processing.get_reach_line_fc(access_fc_temp, hydro_net, reach_hydroline, reach_invalid_out)
 
         # combine the output record length of valid and invalid, it should be 69
         total_processed = (int(arcpy.GetCount_management(reach_hydroline)[0]) +
