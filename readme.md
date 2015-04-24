@@ -9,7 +9,7 @@ This repository contains a Python package located in **whitewater_analysis/utili
 
 The Whitewater Analysis Tools toolbox has one toolset, USGS NHD Acqusition & Aggregation and one tool, Get Reach Hydrolines. The toolset facilitates the process of building out a single NHD dataset for reach analysis from the high resolution NHD subregions available from the USGS.  
 
-## Licensing - The MIT License (MIT)
+## Licensing - Apache License
 
 Copyright 2014 Joel McCune
 
