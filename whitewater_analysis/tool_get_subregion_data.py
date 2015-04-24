@@ -1,7 +1,7 @@
 """
 author:     Joel McCune (joel.mccune+gis@gmail.com)
-dob:        04 Dec 2014
-purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
+dob:        13 Dec 2014
+purpose:    Provide a tool wrapper for downloading subregion data from the USGS and preparing data for analysis.
 
     Copyright 2014 Joel McCune
 
@@ -18,18 +18,19 @@ purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
     limitations under the License.
 """
 # import modules
-from arcpy import GetParameter
 from arcpy import GetParameterAsText
-from arcpy import SetProgressor
-from reach_utilities import get_reach_line_fc
 
-# provide a more interesting message
-SetProgressor(type='default', message='firing up the redonkulator...stand by')
+from utilities import get_and_append_subregion_data, update_flow_direction
 
-# collect input parameters and run functions
-get_reach_line_fc(
-    access_fc=GetParameter(0),
-    hydro_network=GetParameter(1),
-    reach_hydroline_fc=GetParameterAsText(2),
-    reach_invalid_tbl=GetParameterAsText(3)
+
+# save path to geodatabase in a variable
+sde = GetParameterAsText(1)
+
+# download the data from the USGS and append it to the master geodatabase
+get_and_append_subregion_data(
+    huc4=GetParameterAsText(0),
+    master_geodatabase=sde
 )
+
+# update the flow direction
+update_flow_direction(sde)

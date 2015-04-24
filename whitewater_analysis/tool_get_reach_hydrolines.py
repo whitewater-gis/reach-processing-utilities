@@ -1,7 +1,7 @@
 """
 author:     Joel McCune (joel.mccune+gis@gmail.com)
-dob:        13 Dec 2014
-purpose:    Provide a tool wrapper for appending data to the master dataset and preparing it for analysis.
+dob:        04 Dec 2014
+purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
 
     Copyright 2014 Joel McCune
 
@@ -18,14 +18,20 @@ purpose:    Provide a tool wrapper for appending data to the master dataset and 
     limitations under the License.
 """
 # import modules
+from arcpy import GetParameter
 from arcpy import GetParameterAsText
-from reach_utilities import append_subregion_data, update_flow_direction
+from arcpy import SetProgressor
 
-# save path to geodatabase in a variable
-sde = GetParameterAsText(1)
+from whitewater_analysis.utilities.reach_utilities import get_reach_line_fc
 
-# append the subregion data to the master
-append_subregion_data(GetParameterAsText(0), sde)
 
-# update the flow direction
-#update_flow_direction(sde)
+# provide a more interesting message
+SetProgressor(type='default', message='firing up the redonkulator...stand by')
+
+# collect input parameters and run functions
+get_reach_line_fc(
+    access_fc=GetParameter(0),
+    hydro_network=GetParameter(1),
+    reach_hydroline_fc=GetParameterAsText(2),
+    reach_invalid_tbl=GetParameterAsText(3)
+)

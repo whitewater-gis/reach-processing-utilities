@@ -21,10 +21,13 @@ purpose:    Test the utilities to clean up and enhance the spatial component of 
 
 # import modules
 import unittest
-import arcpy
-import reach_utilities
 import itertools
 import os.path
+
+import arcpy
+
+from whitewater_analysis.utilities import reach_utilities
+
 
 # variables
 access_fc = r'D:\spatialData\aw\aw (owner).sde\aw.owner.accesses'

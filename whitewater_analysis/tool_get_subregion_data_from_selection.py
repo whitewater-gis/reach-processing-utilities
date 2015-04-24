@@ -17,18 +17,26 @@ purpose:    Provide a tool wrapper for downloading subregion data from the USGS 
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-# import modules
-from arcpy import GetParameterAsText
-from reach_utilities import get_and_append_subregion_data, update_flow_direction
+# import minimal modules
+from arcpy import da, GetParameter, GetParameterAsText
+
+from utilities.reach_processing import get_and_append_subregion_data, update_flow_direction
+
+
+# get the list of huc4 codes from the huc4 polygon layer
+huc4_list = [row[0] for row in da.SearchCursor(GetParameter(0), 'HUC4')]
 
 # save path to geodatabase in a variable
 sde = GetParameterAsText(1)
 
-# download the data from the USGS and append it to the master geodatabase
-get_and_append_subregion_data(
-    huc4=GetParameterAsText(0),
-    master_geodatabase=sde
-)
+# for every HUC
+for huc4 in huc4_list:
+
+    # download, prep and append the data to the master dataset
+    get_and_append_subregion_data(
+        huc4=huc4,
+        master_geodatabase=sde
+    )
 
 # update the flow direction
 update_flow_direction(sde)

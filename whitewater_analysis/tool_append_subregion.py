@@ -1,7 +1,7 @@
 """
 author:     Joel McCune (joel.mccune+gis@gmail.com)
 dob:        13 Dec 2014
-purpose:    Provide a tool wrapper for updating the tracking field in the HUC4 feature class for downloaded regions.
+purpose:    Provide a tool wrapper for appending data to the master dataset and preparing it for analysis.
 
     Copyright 2014 Joel McCune
 
@@ -19,10 +19,15 @@ purpose:    Provide a tool wrapper for updating the tracking field in the HUC4 f
 """
 # import modules
 from arcpy import GetParameterAsText
-from reach_utilities import update_download_tracking
 
-# run function
-update_download_tracking(
-    hydrolines_feature_class=GetParameterAsText(0),
-    huc4_feature_class=GetParameterAsText(1)
-)
+from whitewater_analysis.utilities.reach_utilities import append_subregion_data
+
+
+# save path to geodatabase in a variable
+sde = GetParameterAsText(1)
+
+# append the subregion data to the master
+append_subregion_data(GetParameterAsText(0), sde)
+
+# update the flow direction
+#update_flow_direction(sde)
