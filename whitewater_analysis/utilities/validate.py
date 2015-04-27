@@ -1,8 +1,28 @@
+"""
+author:     Joel McCune (joel.mccune+gis@gmail.com)
+dob:        03 Dec 2014
+purpose:    Provide the utilities to process and work with whitewater reach data.
+
+    Copyright 2014 Joel McCune
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+"""
+# import modules
 import arcpy
 import os
 
 
-def _validate_has_access(reach_id, access_fc):
+def _validate_has_putin_and_takeout(reach_id, access_fc):
     """
     Ensure the specified reach has a putin and takeout.
     :param reach_id: The AW id for the reach.
@@ -17,7 +37,7 @@ def _validate_has_access(reach_id, access_fc):
     arcpy.env.overwriteOutput = True
 
     # make a feature layer for accesses
-    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_validatae')
+    putin_takeout_layer = arcpy.MakeFeatureLayer_management(access_fc, 'access_validatae')
 
     # rather than duplicating code, just use this embedded function
     def get_access_count(layer, access_type, reach_id):
@@ -32,11 +52,12 @@ def _validate_has_access(reach_id, access_fc):
         return int(arcpy.GetCount_management(layer)[0])
 
     # if the putin or takeout count is not exactly one, invalidate
-    if get_access_count(access_lyr, 'putin', reach_id) == 1 and get_access_count(access_lyr, 'takeout', reach_id) == 1:
-        del access_lyr
+    if (get_access_count(putin_takeout_layer, 'putin', reach_id) == 1 and
+            get_access_count(putin_takeout_layer, 'takeout', reach_id) == 1):
+        del putin_takeout_layer
         return True
     else:
-        del access_lyr
+        del putin_takeout_layer
         return False
 
 
@@ -56,7 +77,7 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
     hydroline_lyr = arcpy.MakeFeatureLayer_management(os.path.join(fds_path, 'NHDFlowline'), 'hydroline_lyr')
 
     # create an access layer
-    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_lyr')
+    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'putin_takeout_coincidence')
 
     # add field delimters for sql
     sql_pi = arcpy.AddFieldDelimiters(fds_path, 'putin')
@@ -129,7 +150,7 @@ def validate_reach(reach_id, access_fc, hydro_network):
     :return: Boolean indicating if the reach is valid or not.
     """
     # ensure the reach has a putin and a takeout
-    if not _validate_has_access(reach_id, access_fc):
+    if not _validate_has_putin_and_takeout(reach_id, access_fc):
         arcpy.AddMessage(
             '{} does not appear to have both a putin and takeout, and will not be processed.'.format(reach_id)
         )
