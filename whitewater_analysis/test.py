@@ -1,7 +1,7 @@
 """
 author:     Joel McCune (joel.mccune+aw@gmail.com)
 dob:        03 Dec 2014
-purpose:    Test the utilities to clean up and enhance the spatial component of the American Whitewater reaches
+purpose:    Test the utilities to clean up and enhance the spatial component of whitewater recreation reaches
             data set.
 
     Copyright 2014 Joel McCune

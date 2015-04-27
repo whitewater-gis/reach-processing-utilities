@@ -27,9 +27,9 @@ from validate import validate_reach
 def _process_reach(reach_id, access_fc, hydro_network):
     """
     Get the hydroline geometry for the reach using the putin and takeout access points identified using the reach id.
-    :param reach_id: The AW id for the reach.
+    :param reach_id: The reach id for the reach.
     :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
-                      takeout. These fields must store the AW id for the point role as a putin or takeout.
+                      takeout. These fields must store the reach id for the point role as a putin or takeout.
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
     :return: Polyline Geometry object representing the reach hydroline.
     """
@@ -83,13 +83,13 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     """
     Get an output reach feature class using an access feature class with putins and takeouts.
     :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
-                      takeout. These fields must store the AW id for the point role as a putin or takeout.
+                      takeout. These fields must store the reach id for the point role as a putin or takeout.
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
     :param reach_hydroline_fc: Output line feature class for output hydrolines.
     :param reach_invalid_tbl: Output table listing invalid reaches with the reason.
     :return:
     """
-    # get list of AW id's from the takeouts not including the NULL or zero values
+    # get list of reach id's from the takeouts not including the NULL or zero values
     reach_id_list = [row[0] for row in arcpy.da.SearchCursor(access_fc,
                                                          'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
 
@@ -201,7 +201,7 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table):
     for attribute in attribute_list:
         arcpy.AddField_management(hydroline_fc, attribute['name'], attribute['type'], field_length=attribute['length'])
 
-    # get list of all AW id's
+    # get list of all reach id's
     reach_id_list = set([row[0] for row in arcpy.da.SearchCursor(hydroline_fc, 'reach_id')])
 
     # create a layer for the hydroline feature class
@@ -213,7 +213,7 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table):
     # attributes to transfer for update cursor
     attribute_name_list = ['reach_id'] + [attribute['name'] for attribute in attribute_list]
 
-    # for every AW id found
+    # for every reach id found
     for reach_id in reach_id_list:
 
         # create sql string to select the reach
