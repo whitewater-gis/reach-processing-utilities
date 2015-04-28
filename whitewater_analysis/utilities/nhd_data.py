@@ -131,10 +131,10 @@ def update_flow_direction(master_geodatabase):
         for obj in obj_list:
 
             # use regular expression matching to filter out HYDRO_NET
-            if re.match(r'^.+HYDRO_NET', obj):
+            if re.match(r'^.*HYDRO_NET$', obj):
 
                 # save full path to a variable
-                hydro_net = '{}\{}'.format(top_dir, obj)
+                hydro_net = os.path.join(top_dir, obj)
 
             # if the hydro net does not exist
             else:
