@@ -76,7 +76,7 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
     fds_path = os.path.dirname(arcpy.Describe(hydro_network).catalogPath)
 
     # set workspace so list feature classes works
-    arcpy.env.workspace(fds_path)
+    arcpy.env.workspace = fds_path
 
     # create layer for NHD hydrolines
     hydroline_lyr = arcpy.MakeFeatureLayer_management(

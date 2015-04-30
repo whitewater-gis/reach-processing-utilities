@@ -247,6 +247,42 @@ def add_meta_to_hydrolines(hydroline_fc, meta_table):
     return True
 
 
+def get_reach_centroid(reach_hydroline_geometry_list):
+    """
+    Get the center of the geomtery for the reach from the geometry list of all the line segments.
+    :param reach_hydroline_geometry_list: List of line geometry objects comprising the reach.
+    :return: Point geometry object at the geometric center of the reach, not necessarily coincident with any line
+        geometry.
+    """
+    # create extent object to work with
+    extent = arcpy.Extent()
+
+    # for every line geometry, get the extent
+    for line_geometry in reach_hydroline_geometry_list:
+
+        # if the xmin is less than the saved value, save it
+        if line_geometry.XMin < extent.XMin:
+            extent.XMin = line_geometry.XMin
+
+        # if the ymin is less than the saved value, save it
+        if line_geometry.YMin < extent.YMin:
+            extent.YMin = line_geometry.YMin
+
+        # if the xmax is greater than the saved value, save it
+        if line_geometry.XMax > extent.XMax:
+            extent.XMax = line_geometry.XMax
+
+        # if the ymax is greater than the saved value, save it
+        if line_geometry.YMax > extent.YMax:
+            extent.YMax = line_geometry.YMax
+
+    # create a point centroid and return it
+    return arcpy.Point(
+        X=extent.XMin + (extent.YMax - extent.YMin) / 2,
+        Y=extent.YMin + (extent.YMax - extent.YMin) / 2
+    )
+
+
 def create_reach_centroid_feature_class(reach_hydroline_feature_class, output_reach_centroids):
     """
     Create a feature class consisting of little more than centroids for each reach for symbolizing at smaller scales.
