@@ -18,9 +18,10 @@ purpose:    Provide the utilities to process and work with whitewater reach data
     limitations under the License.
 """
 # import modules
-import arcpy
 import os
 import time
+
+import arcpy
 
 
 def get_timestamp():

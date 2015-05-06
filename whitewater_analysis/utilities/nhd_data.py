@@ -18,12 +18,12 @@ purpose:    Provide the utilities to process and work with whitewater reach data
     limitations under the License.
 """
 # import modules
-import arcpy
 import os
 import zipfile
 import ftplib
 import re
-import shutil
+
+import arcpy
 
 
 def get_huc4_from_gdb_name(nhd_gdb_archive_name):
@@ -198,7 +198,13 @@ def create_output_geodatabase_and_hydro_net(nhd_geodatabase, output_directory):
     )
 
     # move to final location...this accommodates slower io to file servers
-    shutil.move(staging_fgdb, output_directory)
+    final_gdb = arcpy.Copy_management(
+        in_data=staging_fgdb,
+        out_data=os.path.join(output_directory, out_fgdb_name)
+    )[0]
+
+    # return the path to the final result
+    return final_gdb
 
 
 def get_nhd_subregion(huc4, subregion_directory):
@@ -217,7 +223,13 @@ def get_nhd_subregion(huc4, subregion_directory):
     staged_gdb = download_nhd_subregion(huc4, temp_directory)
 
     # create the output geodatabase and hydrology network for analysis
-    return create_output_geodatabase_and_hydro_net(staged_gdb, subregion_directory)
+    analysis_gdb = create_output_geodatabase_and_hydro_net(staged_gdb, subregion_directory)
+
+    # delete the staging geodatabase
+    arcpy.Delete_management(staged_gdb)
+
+    # return the path to the geodatabase
+    return analysis_gdb
 
 
 def build_subregion_directory(subregion_directory):
