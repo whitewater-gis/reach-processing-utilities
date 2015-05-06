@@ -20,6 +20,11 @@ purpose:    Provide the utilities to process and work with whitewater reach data
 # import modules
 import arcpy
 import os
+import time
+
+
+def get_timestamp():
+    return time.strftime('%H:%M:%S %d%b%Y')
 
 
 def _validate_has_putin_and_takeout(reach_id, access_fc):
@@ -160,27 +165,30 @@ def validate_reach(reach_id, access_fc, hydro_network):
     # ensure the reach has a putin and a takeout
     if not _validate_has_putin_and_takeout(reach_id, access_fc):
         arcpy.AddMessage(
-            '{} does not appear to have both a putin and takeout, and will not be processed.'.format(reach_id)
+            '{} {} does not appear to have both a putin and takeout, and will not be processed.'.format(
+                get_timestamp(),reach_id)
         )
         return {'valid': False, 'reach_id': reach_id, 'reason': 'does not have a access pair, both a putin and takeout'}
 
     # ensure the accesses are coincident with the hydrolines
     elif not _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
-            '{} accesses do not appear to be coincident with hydrolines, and will not be processed.'.format(reach_id)
+            '{} {} accesses do not appear to be coincident with hydrolines, and will not be processed.'.format(
+                get_timestamp(), reach_id)
         )
         return {'valid': False, 'reach_id': reach_id, 'reason': 'accesses not coincident with hydrolines'}
 
     # ensure the putin is upstream of the takeout, and if valid, save upstream trace hydroline layer
     elif not _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
         arcpy.AddMessage(
-            '{} putin does not appear to be upstream of takeout, and will not be processed.'.format(reach_id)
+            '{} {} putin does not appear to be upstream of takeout, and will not be processed.'.format(
+                get_timestamp(), reach_id)
         )
         return {'valid': False, 'reach_id': reach_id, 'reason': 'putin not upstream of takeout'}
 
     # if everything passes, return true
     else:
         arcpy.AddMessage(
-            '{} is valid, and will be processed.'.format(reach_id)
+            '{} {} is valid, and will be processed.'.format(get_timestamp(), reach_id)
         )
         return {'valid': True}

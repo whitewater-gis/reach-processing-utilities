@@ -4,8 +4,6 @@ from reach_processing import (
 )
 
 from nhd_data import (
-    append_subregion_data,
-    get_and_append_subregion_data,
-    update_download_tracking,
-    update_flow_direction
+    get_nhd_subregion,
+    build_subregion_directory
 )
