@@ -81,7 +81,7 @@ class TestCaseSingleReach(unittest.TestCase):
         )
 
     def test_get_reach_geometry(self):
-        reach = utilities.reach_processing._process_reach(
+        reach = utilities.reach_processing.process_reach(
             reach_id=self.single_reach_id,
             access_fc=access_fc,
             hydro_network=hydro_net

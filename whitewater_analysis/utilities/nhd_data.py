@@ -232,7 +232,7 @@ def get_nhd_subregion(huc4, subregion_directory):
     return analysis_gdb
 
 
-def build_subregion_directory(subregion_directory):
+def build_subregion_directory_logic(subregion_directory):
     """
     For a file server or some other location with a LOT of storage where all the subregions can be staged for follow
     on analysis, use this function to download and process all the subregions.
@@ -257,3 +257,44 @@ def build_subregion_directory(subregion_directory):
     # iterate the nhd list and set up the subregion directory
     for huc4 in nhd_subregion_list:
         get_nhd_subregion(huc4, subregion_directory)
+
+
+def build_subregion_directory(subregion_directory):
+    """
+    Provide brute force wrapper to keep trying when encountering errors (typically associated with file io issues).
+    :param subregion_directory: :param subregion_directory: String directory where all the subregions will live.
+    :return:
+    """
+    # keep track of errors encountered
+    error_count = 0
+
+    # build function to keep diving in if less than 10 errors encountered
+    def run_analysis(subregion_dir):
+
+        # get in there and run the analysis
+        try:
+            build_subregion_directory_logic(subregion_dir)
+
+        # if something blows up
+        except Exception as e:
+
+            # increment the error counter
+            error_count=+1
+
+            # if there are less than 10 errors
+            if error_count < 10:
+
+                # report something blew up
+                print('Attempting to recover from an error.')
+                print(e)
+
+                # run thine self
+                run_analysis(subregion_directory)
+
+            # otherwise
+            else:
+                print(e)
+
+    # now, instantiate the function
+    if error_count == 0:
+        run_analysis(subregion_directory)

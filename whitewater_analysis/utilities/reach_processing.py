@@ -26,7 +26,7 @@ import arcpy
 from validate import validate_reach
 
 
-def _process_reach(reach_id, access_fc, hydro_network):
+def process_reach(reach_id, access_fc, hydro_network):
     """
     Get the hydroline geometry for the reach using the putin and takeout access points identified using the reach id.
     :param reach_id: The reach id for the reach.
@@ -145,7 +145,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
         arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(reach_id, progressor_index, len(reach_id_list)))
 
         # process each reach
-        reach = _process_reach(
+        reach = process_reach(
             reach_id=reach_id,
             access_fc=access_fc,
             hydro_network=hydro_network
