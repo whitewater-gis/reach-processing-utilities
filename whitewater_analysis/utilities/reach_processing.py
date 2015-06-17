@@ -48,9 +48,18 @@ def process_reach(reach_id, access_fc, hydro_network):
     takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
     putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
 
-    # trace network connecting the putin and the takeout, this returns all intersecting line segments
-    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
-                                                         [putin_geometry, takeout_geometry], 'FIND_PATH', )[0]
+    # catch undefined errors being encountered
+    try:
+
+        # trace network connecting the putin and the takeout, this returns all intersecting line segments
+        group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
+                                                             [putin_geometry, takeout_geometry], 'FIND_PATH', )[0]
+
+    # if something bombs, at least record what the heck happened
+    except Exception as e:
+
+        # return the error code to be logged in the reach error log
+        return e
 
     # extract the flowline layer with upstream features selected from the group layer
     hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]

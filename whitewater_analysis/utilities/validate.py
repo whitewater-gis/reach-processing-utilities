@@ -102,7 +102,7 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
                                             "{} = '{}' OR {} = '{}'".format(sql_pi, reach_id, sql_to, reach_id))
 
     # snap the putin and takeout to the hydrolines
-    arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '100 Feet']])
+    arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
 
     # select by location, selecting accesses coincident with the hydrolines
     arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='SUBSET_SELECTION')

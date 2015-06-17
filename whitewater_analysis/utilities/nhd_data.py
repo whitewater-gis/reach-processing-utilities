@@ -114,7 +114,7 @@ def download_nhd_subregion(huc4, output_directory):
     :return: String path to output file geodatabase.
     """
     # add a little information to the user
-    arcpy.AddMessage('Downloading data from the USGS for subregion {}'.format(huc4))
+    arcpy.AddMessage('Downloading data from the USGS for subregion {}.'.format(huc4))
 
     # get path to scratch directory to store resources
     scratch_dir = arcpy.env.scratchFolder
@@ -145,8 +145,27 @@ def download_nhd_subregion(huc4, output_directory):
     del zfile
     os.remove(temp_zip)
 
+    # even if nonstandard name, get the full path to the output NHD geodatabase
+    def get_path(directory, huc4):
+
+        # create the match string for the regular expression and compile the regex object
+        match_string = r'(.*?NHDH{}.*?gdb)'.format(huc4)
+        regex = re.compile(match_string)
+
+        # use walk to get a list
+        for dir_top, dir_list, obj_list in arcpy.da.Walk(directory):
+
+            # iterate the directories found
+            for dir_single in dir_list:
+
+                # use regular expression matching to see if there is a match
+                if regex.search(dir_single):
+
+                    # return the full path to the directory
+                    return os.path.join(dir_top, dir_single)
+
     # return the path to the subregion gdb
-    return os.path.join(output_directory, 'NHDH{}.gdb'.format(huc4))
+    return get_path(output_directory, huc4)
 
 
 def create_output_geodatabase_and_hydro_net(nhd_geodatabase, output_directory):
@@ -202,6 +221,9 @@ def create_output_geodatabase_and_hydro_net(nhd_geodatabase, output_directory):
         in_data=staging_fgdb,
         out_data=os.path.join(output_directory, out_fgdb_name)
     )[0]
+
+    # report success
+    arcpy.AddMessage('Analysis database for subregion {} is ready.'.format(huc4))
 
     # return the path to the final result
     return final_gdb
