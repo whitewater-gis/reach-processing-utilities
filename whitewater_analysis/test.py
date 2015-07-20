@@ -32,9 +32,9 @@ import utilities.reach_processing
 
 
 # variables
-access_fc = r'D:\dev\reach-processing-tools\resources\aw (owner).sde\aw.owner.accesses'
-hydro_net = r'D:\dev\reach-processing-tools\resources\aw (owner).sde\aw.owner.Hydrography\aw.owner.HYDRO_NET'
-huc4 = r'D:\dev\reach-processing-tools\resources\aw (owner).sde\aw.owner.WBDHU4'
+access_fc = r'D:\dev\reach-processing-tools\resources\data-aw.gdb\access_master'
+hydro_net = r'F:\reach-processing\subregions\1711.gdb\Hydrography\HYDRO_NET'
+huc4 = r'D:\dev\reach-processing-tools\resources\WBD.gdb\WBD\WBDHU4'
 test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
 
@@ -51,10 +51,10 @@ class TestCaseDownloadSmallest(unittest.TestCase):
         self.assertTrue(arcpy.Exists(fgdb))
 
 
-class TestCaseSingleReach(unittest.TestCase):
+class TestCaseSingleReach2170(unittest.TestCase):
 
-    # single reach id known to be valid
-    single_reach_id = '00003491'
+    # single reach id causing problems
+    single_reach_id = '2170'
 
     def test_reach_has_putin_and_takeout(self):
 
@@ -62,12 +62,15 @@ class TestCaseSingleReach(unittest.TestCase):
             reach_id=self.single_reach_id,
             access_fc=access_fc
         )
-        self.assertTrue(status, 'It appears there is not a putin and takeout for reach id {}'.format(self.single_reach_id))
+        self.assertTrue(
+            status,
+            'Reach id {} does not appears to have a putin and takeout.'.format(self.single_reach_id)
+        )
 
-    def test_reach_accesses_coincident(self):
+    def test_reach_accesses_coincident_with_hydrolines(self):
         self.assertTrue(
             utilities.validate._validate_putin_takeout_conicidence(self.single_reach_id, access_fc, hydro_net),
-            'Reach id {} appears to have a putin and takeout.'.format(self.single_reach_id)
+            'Although reach id {} appears to have a putin and takeout, the accesses are not coincident. They are not on the USGS hyrdrolines.'.format(self.single_reach_id)
         )
 
     def test_reach_putin_upstream_from_takeout(self):
@@ -77,7 +80,7 @@ class TestCaseSingleReach(unittest.TestCase):
                 access_fc=access_fc,
                 hydro_network=hydro_net
             ),
-            'The putin appears to be upstream of the takeout for reach id {}.'.format(self.single_reach_id)
+            'The putin does not appear to be upstream of the takeout for reach id {}.'.format(self.single_reach_id)
         )
 
     def test_get_reach_geometry(self):

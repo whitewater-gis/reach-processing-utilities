@@ -35,21 +35,21 @@ def process_reach(reach_id, access_fc, hydro_network):
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
     :return: Polyline Geometry object representing the reach hydroline.
     """
-    # run validation tests
-    validation = validate_reach(reach_id, access_fc, hydro_network)
-
-    # if the reach does not validate
-    if not validation['valid']:
-
-        # return the reason for failing validation
-        return validation
-
-    # get putin and takeout geometry
-    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
-    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
-
     # catch undefined errors being encountered
     try:
+        
+        # run validation tests
+        validation = validate_reach(reach_id, access_fc, hydro_network)
+
+        # if the reach does not validate
+        if not validation['valid']:
+
+            # return the reason for failing validation
+            return validation
+
+        # get putin and takeout geometry
+        takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
+        putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
 
         # trace network connecting the putin and the takeout, this returns all intersecting line segments
         group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
@@ -136,9 +136,6 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
         # add field in invalid table for reason
         arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=100)
 
-    # keep providing updates
-    arcpy.SetProgressor('step', 'Ready to see how many reaches we can process.', 0, len(reach_id_list), 1)
-
     # progressor trackers
     progressor_index = 0
     valid_count = 0
@@ -151,7 +148,9 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
         # provide updates
         arcpy.SetProgressorPosition(progressor_index)
-        arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(reach_id, progressor_index, len(reach_id_list)))
+        arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(reach_id, progressor_index,
+                                                                         len(reach_id_list)))
+        arcpy.AddMessage('Starting to process {}'.format(reach_id))
 
         # process each reach
         reach = process_reach(

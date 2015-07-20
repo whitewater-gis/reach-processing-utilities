@@ -57,13 +57,25 @@ def _validate_has_putin_and_takeout(reach_id, access_fc):
         # get the count of selected features in the layer
         return int(arcpy.GetCount_management(layer)[0])
 
-    # if the putin or takeout count is not exactly one, invalidate
-    if (get_access_count(putin_takeout_layer, 'putin', reach_id) == 1 and
-            get_access_count(putin_takeout_layer, 'takeout', reach_id) == 1):
-        del putin_takeout_layer
+    # try to get a putin
+    putin_count = get_access_count(putin_takeout_layer, 'putin', reach_id)
+
+    # try to get a takeout
+    takeout_count = get_access_count(putin_takeout_layer, 'takeout', reach_id)
+
+    # clean up the layer
+    del putin_takeout_layer
+
+    # if a putin and takeout are found
+    if putin_count == 1 and takeout_count == 1:
+
+        # return success
         return True
+
+    # if a putin and takeout are not found, unfortunately it is invalid
     else:
-        del putin_takeout_layer
+
+        # return failure
         return False
 
 
@@ -128,8 +140,8 @@ def _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
                       upstream from the takeout.
     """
     # get geometry object for putin and takeout
-    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
-    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
+    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "takeout='{}'".format(reach_id))[0]
+    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "putin='{}'".format(reach_id))[0]
 
     # trace upstream from the takeout
     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', takeout_geometry,
@@ -146,7 +158,6 @@ def _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
 
         # test if the putin is coincident with the hydroline geometry segment
         if putin_geometry.within(hydroline_geometry):
-
             # if coincident, return the upstream traced hydroline layer...exiting function
             return True
 
@@ -163,33 +174,45 @@ def validate_reach(reach_id, access_fc, hydro_network):
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
     :return: Boolean indicating if the reach is valid or not.
     """
-    # ensure the reach has a putin and a takeout
-    if not _validate_has_putin_and_takeout(reach_id, access_fc):
-        arcpy.AddMessage(
-            '{} {} does not appear to have both a putin and takeout, and will not be processed.'.format(
-                get_timestamp(),reach_id)
-        )
-        return {'valid': False, 'reach_id': reach_id, 'reason': 'does not have a access pair, both a putin and takeout'}
+    # although kind of kludgy, since we keep encountering an error I cannot sort out, this is a catch all to keep the
+    # script running
+    try:
 
-    # ensure the accesses are coincident with the hydrolines
-    elif not _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
-        arcpy.AddMessage(
-            '{} {} accesses do not appear to be coincident with hydrolines, and will not be processed.'.format(
-                get_timestamp(), reach_id)
-        )
-        return {'valid': False, 'reach_id': reach_id, 'reason': 'accesses not coincident with hydrolines'}
+        # ensure the reach has a putin and a takeout
+        if not _validate_has_putin_and_takeout(reach_id, access_fc):
+            arcpy.AddMessage(
+                '{} {} does not appear to have both a putin and takeout, and will not be processed.'.format(
+                    get_timestamp(), reach_id)
+            )
+            return {'valid': False, 'reach_id': reach_id,
+                    'reason': 'does not have a access pair, both a putin and takeout'}
 
-    # ensure the putin is upstream of the takeout, and if valid, save upstream trace hydroline layer
-    elif not _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
-        arcpy.AddMessage(
-            '{} {} putin does not appear to be upstream of takeout, and will not be processed.'.format(
-                get_timestamp(), reach_id)
-        )
-        return {'valid': False, 'reach_id': reach_id, 'reason': 'putin not upstream of takeout'}
+        # ensure the accesses are coincident with the hydrolines
+        elif not _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
+            arcpy.AddMessage(
+                '{} {} accesses do not appear to be coincident with hydrolines, and will not be processed.'.format(
+                    get_timestamp(), reach_id)
+            )
+            return {'valid': False, 'reach_id': reach_id, 'reason': 'accesses not coincident with hydrolines'}
 
-    # if everything passes, return true
-    else:
-        arcpy.AddMessage(
-            '{} {} is valid, and will be processed.'.format(get_timestamp(), reach_id)
-        )
-        return {'valid': True}
+        # ensure the putin is upstream of the takeout, and if valid, save upstream trace hydroline layer
+        elif not _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
+            arcpy.AddMessage(
+                '{} {} putin does not appear to be upstream of takeout, and will not be processed.'.format(
+                    get_timestamp(), reach_id)
+            )
+            return {'valid': False, 'reach_id': reach_id, 'reason': 'putin not upstream of takeout'}
+
+        # if everything passes, return true
+        else:
+            arcpy.AddMessage(
+                '{} {} is valid, and will be processed.'.format(get_timestamp(), reach_id)
+            )
+            return {'valid': True}
+
+    # if something goes wrong
+    except Exception as e:
+
+        # return false and let user know this reach is problematic
+        arcpy.AddMessage('{} {} caused an error and will not be processed.'.format(get_timestamp(), reach_id))
+        return {'valid': False, 'reach_id': reach_id, 'reason': 'ERROR: {}'.format(e)}
