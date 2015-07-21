@@ -35,17 +35,18 @@ def process_reach(reach_id, access_fc, hydro_network):
     :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
     :return: Polyline Geometry object representing the reach hydroline.
     """
+        
+    # run validation tests
+    validation = validate_reach(reach_id, access_fc, hydro_network)
+
+    # if the reach does not validate
+    if not validation['valid']:
+
+        # return the reason for failing validation
+        return validation
+
     # catch undefined errors being encountered
     try:
-        
-        # run validation tests
-        validation = validate_reach(reach_id, access_fc, hydro_network)
-
-        # if the reach does not validate
-        if not validation['valid']:
-
-            # return the reason for failing validation
-            return validation
 
         # get putin and takeout geometry
         takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
@@ -55,39 +56,40 @@ def process_reach(reach_id, access_fc, hydro_network):
         group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
                                                              [putin_geometry, takeout_geometry], 'FIND_PATH', )[0]
 
-    # if something bombs, at least record what the heck happened
+
+        # extract the flowline layer with upstream features selected from the group layer
+        hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
+
+        # dissolve into minimum segments and save back into a geometry object
+        hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
+
+        # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles above and below the
+        # putin and takeout and saving as in memory feature class since trim line does not work on a geometry list
+        for access in [putin_geometry, takeout_geometry]:
+            hydroline = arcpy.SplitLineAtPoint_management(
+                hydroline,
+                access,
+                'in_memory/split{}'.format(int(time.time()*1000))
+            )[0]
+
+        # trim ends of reach off above and below the putin and takeout
+        arcpy.TrimLine_edit(hydroline)
+
+        # pull out just geometry objects
+        hydroline_geometry = [row[0] for row in arcpy.da.SearchCursor(hydroline, 'SHAPE@')]
+
+        # assemble into a success dictionary and return result
+        return {
+            'valid': True,
+            'reach_id': reach_id,
+            'geometry_list': hydroline_geometry
+        }
+
+    # if something bombs, at least record what the heck happened and keep from crashing the entire run
     except Exception as e:
-
-        # return the error code to be logged in the reach error log
-        return e
-
-    # extract the flowline layer with upstream features selected from the group layer
-    hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
-
-    # dissolve into minimum segments and save back into a geometry object
-    hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
-
-    # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles above and below the
-    # putin and takeout and saving as in memory feature class since trim line does not work on a geometry list
-    for access in [putin_geometry, takeout_geometry]:
-        hydroline = arcpy.SplitLineAtPoint_management(
-            hydroline,
-            access,
-            'in_memory/split{}'.format(int(time.time()*1000))
-        )[0]
-
-    # trim ends of reach off above and below the putin and takeout
-    arcpy.TrimLine_edit(hydroline)
-
-    # pull out just geometry objects
-    hydroline_geometry = [row[0] for row in arcpy.da.SearchCursor(hydroline, 'SHAPE@')]
-
-    # assemble into a success dictionary and return result
-    return {
-        'valid': True,
-        'reach_id': reach_id,
-        'geometry_list': hydroline_geometry
-    }
+        arcpy.AddWarning('Although {} passed validation, it still bombed the process. Here is the error:\n{}'.format(
+            reach_id, e))
+        return {'valid': False, 'reach_id': reach_id, 'reason': 'Error: {}'.format(e)}
 
 
 def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):

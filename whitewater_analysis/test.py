@@ -103,6 +103,111 @@ class TestCaseSingleReach2170(unittest.TestCase):
         )
 
 
+class TestCaseSingleReach2171(unittest.TestCase):
+
+    # single reach id causing problems
+    single_reach_id = '2171'
+
+    def test_reach_has_putin_and_takeout(self):
+
+        status = utilities.validate._validate_has_putin_and_takeout(
+            reach_id=self.single_reach_id,
+            access_fc=access_fc
+        )
+        self.assertTrue(
+            status,
+            'Reach id {} does not appears to have a putin and takeout.'.format(self.single_reach_id)
+        )
+
+    def test_reach_accesses_coincident_with_hydrolines(self):
+        self.assertTrue(
+            utilities.validate._validate_putin_takeout_conicidence(self.single_reach_id, access_fc, hydro_net),
+            'Although reach id {} appears to have a putin and takeout, the accesses are not coincident. They are not on the USGS hyrdrolines.'.format(self.single_reach_id)
+        )
+
+    def test_reach_putin_upstream_from_takeout(self):
+        self.assertTrue(
+            utilities.validate._validate_putin_upstream_from_takeout(
+                reach_id=self.single_reach_id,
+                access_fc=access_fc,
+                hydro_network=hydro_net
+            ),
+            'The putin does not appear to be upstream of the takeout for reach id {}.'.format(self.single_reach_id)
+        )
+
+    def test_get_reach_geometry(self):
+        reach = utilities.reach_processing.process_reach(
+            reach_id=self.single_reach_id,
+            access_fc=access_fc,
+            hydro_network=hydro_net
+        )
+        # initially set to true and if any of the segments do not have a geometry, fail
+        status = True
+        for geometry in reach['geometry_list']:
+            if not geometry.length:
+                status = False
+
+        self.assertTrue(
+            status,
+            'At least one of the returned geometries appears not to have a length for reach id {}'.format(
+                self.single_reach_id
+            )
+        )
+
+
+
+class TestCaseSingleReach2172(unittest.TestCase):
+
+    # single reach id causing problems
+    single_reach_id = '2172'
+
+    def test_reach_has_putin_and_takeout(self):
+
+        status = utilities.validate._validate_has_putin_and_takeout(
+            reach_id=self.single_reach_id,
+            access_fc=access_fc
+        )
+        self.assertTrue(
+            status,
+            'Reach id {} does not appears to have a putin and takeout.'.format(self.single_reach_id)
+        )
+
+    def test_reach_accesses_coincident_with_hydrolines(self):
+        self.assertTrue(
+            utilities.validate._validate_putin_takeout_conicidence(self.single_reach_id, access_fc, hydro_net),
+            'Although reach id {} appears to have a putin and takeout, the accesses are not coincident. They are not on the USGS hyrdrolines.'.format(self.single_reach_id)
+        )
+
+    def test_reach_putin_upstream_from_takeout(self):
+        self.assertTrue(
+            utilities.validate._validate_putin_upstream_from_takeout(
+                reach_id=self.single_reach_id,
+                access_fc=access_fc,
+                hydro_network=hydro_net
+            ),
+            'The putin does not appear to be upstream of the takeout for reach id {}.'.format(self.single_reach_id)
+        )
+
+    def test_get_reach_geometry(self):
+        reach = utilities.reach_processing.process_reach(
+            reach_id=self.single_reach_id,
+            access_fc=access_fc,
+            hydro_network=hydro_net
+        )
+        # initially set to true and if any of the segments do not have a geometry, fail
+        status = True
+        for geometry in reach['geometry_list']:
+            if not geometry.length:
+                status = False
+
+        self.assertTrue(
+            status,
+            'At least one of the returned geometries appears not to have a length for reach id {}'.format(
+                self.single_reach_id
+            )
+        )
+
+
 class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
 
     # reach id list of all reaches on Olympic Peninsula
