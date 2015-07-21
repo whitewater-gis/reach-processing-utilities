@@ -24,6 +24,7 @@ import time
 import arcpy
 
 from validate import validate_reach
+from validate import get_timestamp
 
 
 def process_reach(reach_id, access_fc, hydro_network):
@@ -159,7 +160,8 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
         # provide updates
         arcpy.SetProgressorPosition(progressor_index)
-        update_message = 'Processing reach id {} ({}/{})'.format(reach_id, progressor_index, len(reach_id_list))
+        update_message = '{} Processing reach id {} ({}/{})'.format(get_timestamp(),
+                                                                    reach_id, progressor_index, len(reach_id_list))
         arcpy.SetProgressorLabel(update_message)
         arcpy.AddMessage(update_message)
 
