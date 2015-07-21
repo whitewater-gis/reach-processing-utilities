@@ -197,7 +197,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
                 cursor_invalid.insertRow((str(reach['reach_id']), reach['reason']))
 
     # at the very end, report the success rate
-    arcpy.AddMessage('{}% ({}/{}) of reaches were processed.'.format(float(valid_count)/len(reach_id_list)*100.0,
+    arcpy.AddMessage('{:.{1}f}% ({}/{}) of reaches were processed.'.format(float(valid_count)/len(reach_id_list)*100.0,
                                                                      valid_count, len(reach_id_list)))
 
 
