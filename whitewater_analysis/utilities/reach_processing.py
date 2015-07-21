@@ -108,6 +108,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
     # give a little beta to the front end
     arcpy.SetProgressor(type='default', message='{} reach id accesses successfully located'.format(len(reach_id_list)))
+    arcpy.AddMessage('{} reach id accesses successfully located'.format(len(reach_id_list)))
 
     # if the output hydrolines does not already exist
     if not arcpy.Exists(reach_hydroline_fc):
@@ -152,7 +153,8 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
         arcpy.SetProgressorPosition(progressor_index)
         arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(reach_id, progressor_index,
                                                                          len(reach_id_list)))
-        arcpy.AddMessage('Starting to process {}'.format(reach_id))
+        arcpy.AddMessage('Processing reach id {} ({}/{})'.format(reach_id, progressor_index,
+                                                                         len(reach_id_list)))
 
         # process each reach
         reach = process_reach(
