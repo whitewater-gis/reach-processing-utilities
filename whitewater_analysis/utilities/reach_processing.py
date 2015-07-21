@@ -87,9 +87,16 @@ def process_reach(reach_id, access_fc, hydro_network):
 
     # if something bombs, at least record what the heck happened and keep from crashing the entire run
     except Exception as e:
+
+        # remove newline characters with space in error string
+        e = e.message.replace('\n', ' ')
+
+        # report error to front end
         arcpy.AddWarning('Although {} passed validation, it still bombed the process. Here is the error:\n{}'.format(
             reach_id, e))
-        return {'valid': False, 'reach_id': reach_id, 'reason': 'Error: {}'.format(e)}
+
+        # return result as failed reach to be logged in invalid table
+        return {'valid': False, 'reach_id': reach_id, 'reason': e}
 
 
 def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
@@ -107,8 +114,9 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
                                                          'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
 
     # give a little beta to the front end
-    arcpy.SetProgressor(type='default', message='{} reach id accesses successfully located'.format(len(reach_id_list)))
-    arcpy.AddMessage('{} reach id accesses successfully located'.format(len(reach_id_list)))
+    start_message = '{} reach id accesses successfully located'.format(len(reach_id_list))
+    arcpy.SetProgressor(type='default', message=start_message)
+    arcpy.AddMessage(start_message)
 
     # if the output hydrolines does not already exist
     if not arcpy.Exists(reach_hydroline_fc):
@@ -137,7 +145,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
         arcpy.AddField_management(in_table=invalid_tbl, field_name='reach_id', field_type='TEXT', field_length=10)
 
         # add field in invalid table for reason
-        arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=100)
+        arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=500)
 
     # progressor trackers
     progressor_index = 0
@@ -151,10 +159,9 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
         # provide updates
         arcpy.SetProgressorPosition(progressor_index)
-        arcpy.SetProgressorLabel('Processing reach id {} ({}/{})'.format(reach_id, progressor_index,
-                                                                         len(reach_id_list)))
-        arcpy.AddMessage('Processing reach id {} ({}/{})'.format(reach_id, progressor_index,
-                                                                         len(reach_id_list)))
+        update_message = 'Processing reach id {} ({}/{})'.format(reach_id, progressor_index, len(reach_id_list))
+        arcpy.SetProgressorLabel(update_message)
+        arcpy.AddMessage(update_message)
 
         # process each reach
         reach = process_reach(
