@@ -69,6 +69,24 @@ def create_invalid_table(full_path_to_invalid_table):
     arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=500)
 
 
+def check_if_hydroline_manually_digitized(hydroline_feature_class, reach_id):
+    """
+    Check to see if the hydroline feature class has been manually digitized.
+    :param hydroline_feature_class: Path to the hydroline feature class.
+    :param reach_id: Reach id being processed.
+    :return: Boolean indicating if reach is manually digitized.
+    """
+    # create a feature layer and select the feature using the reach id and manually digitized fields
+    hydro_layer = arcpy.MakeFeatureLayer_management(
+        in_features=hydroline_feature_class,
+        out_layer='hydroline_{}'.format(reach_id),
+        where_clause="reach_id = '{}' AND manual_digitize = 1".format(reach_id)
+    )
+
+    # if the feature count is zero, it is false, but if any other number, it will return a true value
+    return int(arcpy.GetCount_management(hydro_layer)[0])
+
+
 def process_reach(reach_id, access_fc, hydro_network):
     """
     Get the hydroline geometry for the reach using the putin and takeout access points identified using the reach id.
@@ -158,7 +176,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     # give a little beta to the front end
     arcpy.AddMessage('{} reach id accesses successfully located'.format(len(reach_id_list)))
 
-    # if the output hydrolines does not already exist, create it
+    # if the output hydroline feature class does not already exist, create it
     if not arcpy.Exists(reach_hydroline_fc):
         create_hydroline_feature_class(reach_hydroline_fc, arcpy.Describe(access_fc).spatialReference)
 
@@ -166,36 +184,41 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     if not arcpy.Exists(reach_invalid_tbl):
         create_invalid_table(reach_invalid_tbl)
 
+    # progress tracker
+    valid_count = 0
+
     # for every reach
     for reach_id in reach_id_list:
 
-        # process each reach
-        reach = process_reach(
-            reach_id=reach_id,
-            access_fc=access_fc,
-            hydro_network=hydro_network
-        )
+        # check to see if the reach is manually digitized
+        if check_if_hydroline_manually_digitized(reach_hydroline_fc, reach_id):
 
-        # if the reach is valid
-        if reach['valid']:
+            # process the current reach
+            reach = process_reach(reach_id, access_fc, hydro_network)
 
-            # create an insert cursor
-            with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'SHAPE@')) as cursor_valid:
+            # if the reach is valid
+            if reach['valid']:
 
-                # iterate the geometry objects in the list
-                for geometry in reach['geometry_list']:
+                # create an insert cursor
+                with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'SHAPE@')) as cursor_valid:
+
+                    # iterate the geometry objects in the list
+                    for geometry in reach['geometry_list']:
+
+                        # insert a record in the feature class for the geometry
+                        cursor_valid.insertRow((reach['reach_id'], geometry))
+
+                # increment the valid counter
+                valid_count += 1
+
+            # if the reach is not valid
+            elif not reach['valid']:
+
+                # create an insert cursor
+                with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason')) as cursor_invalid:
 
                     # insert a record in the feature class for the geometry
-                    cursor_valid.insertRow((reach['reach_id'], geometry))
-
-        # if the reach is not valid
-        elif not reach['valid']:
-
-            # create an insert cursor
-            with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason')) as cursor_invalid:
-
-                # insert a record in the feature class for the geometry
-                cursor_invalid.insertRow((str(reach['reach_id']), reach['reason']))
+                    cursor_invalid.insertRow((str(reach['reach_id']), reach['reason']))
 
     # at the very end, report the success rate
     arcpy.AddMessage('{}% ({}/{}) reaches were processed.'.format(int(float(valid_count)/len(reach_id_list)*100),
