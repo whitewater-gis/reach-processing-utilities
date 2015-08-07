@@ -188,9 +188,6 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
                     # insert a record in the feature class for the geometry
                     cursor_valid.insertRow((reach['reach_id'], geometry))
 
-            # increment the valid counter
-            valid_count += 1
-
         # if the reach is not valid
         elif not reach['valid']:
 
