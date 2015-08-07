@@ -68,6 +68,7 @@ def create_invalid_table(full_path_to_invalid_table):
     # add field in invalid table for reason
     arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=500)
 
+
 def process_reach(reach_id, access_fc, hydro_network):
     """
     Get the hydroline geometry for the reach using the putin and takeout access points identified using the reach id.
@@ -155,9 +156,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
                                                          'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
 
     # give a little beta to the front end
-    start_message = '{} reach id accesses successfully located'.format(len(reach_id_list))
-    arcpy.SetProgressor(type='default', message=start_message)
-    arcpy.AddMessage(start_message)
+    arcpy.AddMessage('{} reach id accesses successfully located'.format(len(reach_id_list)))
 
     # if the output hydrolines does not already exist, create it
     if not arcpy.Exists(reach_hydroline_fc):
@@ -167,18 +166,8 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     if not arcpy.Exists(reach_invalid_tbl):
         create_invalid_table(reach_invalid_tbl)
 
-    # progressor trackers
-    progressor_index = 0
-    valid_count = 0
-
     # for every reach
     for reach_id in reach_id_list:
-
-        # index the progressor tracker
-        progressor_index += 1
-
-        # provide updates
-        arcpy.SetProgressorPosition(progressor_index)
 
         # process each reach
         reach = process_reach(
