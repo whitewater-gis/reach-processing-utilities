@@ -247,3 +247,14 @@ class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
 
         # check to make sure 69 records were processed
         self.assertEqual(total_processed, 69)
+
+
+class TestCaseJoinMetaToAccess(unittest.TestCase):
+
+    # paths to data
+    access_fc = r'F:\reach-processing\aggregate\publish20150721.gdb\access'
+
+    def test_append_meta_table(self):
+        join_table = r'F:\reach-processing\aggregate\aggregate20150721.gdb\reach_meta'
+        path = utilities.reach_processing.join_table_to_access(access_fc, join_table)
+        self.assertTrue(len(path))

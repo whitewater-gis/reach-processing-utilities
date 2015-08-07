@@ -24,8 +24,49 @@ import time
 import arcpy
 
 from validate import validate_reach
-from validate import get_timestamp
 
+
+def create_hydroline_feature_class(full_path_to_hydroline_feature_class, spatial_reference):
+    """
+    Create the output hydroline feature class.
+    :param full_path_to_hydroline_feature_class: The full path to where the data is intended to be stored.
+    :return: Path to created resource
+    """
+    # create output hydroline feature class
+    hydroline_fc = arcpy.CreateFeatureclass_management(
+        out_path=os.path.dirname(full_path_to_hydroline_feature_class),
+        out_name=os.path.basename(full_path_to_hydroline_feature_class),
+        geometry_type='POLYLINE',
+        spatial_reference=spatial_reference
+    )[0]
+
+    # add reach id field
+    arcpy.AddField_management(in_table=hydroline_fc, field_name='reach_id', field_type='TEXT', field_length=10)
+
+    # add field to track digitizing source
+    arcpy.AddField_management(in_table=hydroline_fc, field_name='manual_digitize', field_type='SHORT')
+
+    # return the path to the feature class
+    return hydroline_fc
+
+
+def create_invalid_table(full_path_to_invalid_table):
+    """
+    Create the invalid table.
+    :param full_path_to_invalid_table: Full path where the invalid table will reside.
+    :return: Path to the invalid table.
+    """
+    # create output invalid reach table
+    invalid_tbl = arcpy.CreateTable_management(
+        out_path=os.path.dirname(full_path_to_invalid_table),
+        out_name=os.path.basename(full_path_to_invalid_table)
+    )
+
+    # add field for the reach id in the invalid table
+    arcpy.AddField_management(in_table=invalid_tbl, field_name='reach_id', field_type='TEXT', field_length=10)
+
+    # add field in invalid table for reason
+    arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=500)
 
 def process_reach(reach_id, access_fc, hydro_network):
     """
@@ -57,15 +98,14 @@ def process_reach(reach_id, access_fc, hydro_network):
         group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
                                                              [putin_geometry, takeout_geometry], 'FIND_PATH', )[0]
 
-
         # extract the flowline layer with upstream features selected from the group layer
         hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
 
         # dissolve into minimum segments and save back into a geometry object
         hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
 
-        # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles above and below the
-        # putin and takeout and saving as in memory feature class since trim line does not work on a geometry list
+        # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles above and below
+        # the putin and takeout and saving as in memory feature class since trim line does not work on a geometry list
         for access in [putin_geometry, takeout_geometry]:
             hydroline = arcpy.SplitLineAtPoint_management(
                 hydroline,
@@ -119,34 +159,13 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     arcpy.SetProgressor(type='default', message=start_message)
     arcpy.AddMessage(start_message)
 
-    # if the output hydrolines does not already exist
+    # if the output hydrolines does not already exist, create it
     if not arcpy.Exists(reach_hydroline_fc):
+        create_hydroline_feature_class(reach_hydroline_fc, arcpy.Describe(access_fc).spatialReference)
 
-        # create output hydroline feature class
-        hydroline_fc = arcpy.CreateFeatureclass_management(
-            out_path=os.path.dirname(reach_hydroline_fc),
-            out_name=os.path.basename(reach_hydroline_fc),
-            geometry_type='POLYLINE',
-            spatial_reference=arcpy.Describe(access_fc).spatialReference
-        )[0]
-
-        # add reach id field
-        arcpy.AddField_management(in_table=hydroline_fc, field_name='reach_id', field_type='TEXT', field_length=10)
-
-    # if the invalid table does not already exist
+    # if the invalid table does not already exist, create it
     if not arcpy.Exists(reach_invalid_tbl):
-
-        # create output invalid reach table
-        invalid_tbl = arcpy.CreateTable_management(
-            out_path=os.path.dirname(reach_invalid_tbl),
-            out_name=os.path.basename(reach_invalid_tbl)
-        )
-
-        # add field for the reach id in the invalid table
-        arcpy.AddField_management(in_table=invalid_tbl, field_name='reach_id', field_type='TEXT', field_length=10)
-
-        # add field in invalid table for reason
-        arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=500)
+        create_invalid_table(reach_invalid_tbl)
 
     # progressor trackers
     progressor_index = 0
@@ -160,10 +179,6 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
         # provide updates
         arcpy.SetProgressorPosition(progressor_index)
-        update_message = '{} Processing reach id {} ({}/{})'.format(get_timestamp(),
-                                                                    reach_id, progressor_index, len(reach_id_list))
-        arcpy.SetProgressorLabel(update_message)
-        arcpy.AddMessage(update_message)
 
         # process each reach
         reach = process_reach(
@@ -200,122 +215,3 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     arcpy.AddMessage('{}% ({}/{}) reaches were processed.'.format(int(float(valid_count)/len(reach_id_list)*100),
                                                                   valid_count, len(reach_id_list)))
 
-
-def add_meta_to_hydrolines(hydroline_fc, meta_table):
-    """
-    After running the analysis to extract valid hydrolines, this adds the relevant metadata from the master metadata
-    table.
-    :param hydroline_fc: The output from getting the hydrolines above with an reach id field.
-    :param meta_table: The master reach metadata table created from the original reach extract.
-    :return: boolean: Success or failure.
-    """
-    # list of attribute fields to be added
-    attribute_list = [
-        {'name': 'name_river', 'type': 'TEXT', 'length': 255},
-        {'name': 'name_section', 'type': 'TEXT', 'length': 255},
-        {'name': 'name_common', 'type': 'TEXT', 'length': 255},
-        {'name': 'difficulty', 'type': 'TEXT', 'length': 10},
-        {'name': 'difficulty_min', 'type': 'TEXT', 'length': 5},
-        {'name': 'difficulty_max', 'type': 'TEXT', 'length': 5},
-        {'name': 'difficulty_outlier', 'type': 'TEXT', 'length': 5}
-    ]
-
-    # add all the fields to hydrolines
-    for attribute in attribute_list:
-        arcpy.AddField_management(hydroline_fc, attribute['name'], attribute['type'], field_length=attribute['length'])
-
-    # get list of all reach id's
-    reach_id_list = set([row[0] for row in arcpy.da.SearchCursor(hydroline_fc, 'reach_id')])
-
-    # create a layer for the hydroline feature class
-    hydroline_lyr = arcpy.MakeFeatureLayer_management(hydroline_fc, 'hydroline_lyr')
-
-    # create table view for meta table
-    meta_veiw = arcpy.MakeFeatureLayer_management(meta_table, 'meta_view')
-
-    # attributes to transfer for update cursor
-    attribute_name_list = ['reach_id'] + [attribute['name'] for attribute in attribute_list]
-
-    # for every reach id found
-    for reach_id in reach_id_list:
-
-        # create sql string to select the reach
-        sql = "{} = '{}'".format(
-            arcpy.AddFieldDelimiters(os.path.dirname(arcpy.Describe(hydroline_fc).catalogPath), 'reach_id'),
-            reach_id
-        )
-
-        # select features in the hydroline feature class
-        arcpy.SelectLayerByAttribute_management(hydroline_lyr, 'NEW_SELECTION', sql)
-
-        # select features in the meta view
-        arcpy.SelectLayerByAttribute_management(meta_veiw, 'NEW_SELECTION', sql)
-
-        # load attributes from meta table into cursor and retrieve single record as row
-        meta_values = [row for row in arcpy.da.SearchCursor(meta_veiw, attribute_name_list)][0]
-
-        # use update cursor to populate the values in the feature class
-        with arcpy.da.UpdateCursor(hydroline_lyr) as update_cursor:
-
-            # iterate selected rows
-            for row in update_cursor:
-
-                # use the collected values from the meta table to populate the row in the feature class
-                row = meta_values
-
-                # commit the changes
-                update_cursor.updateRow(row)
-
-    # return happy
-    return True
-
-
-def get_reach_centroid(reach_hydroline_geometry_list):
-    """
-    Get the center of the geomtery for the reach from the geometry list of all the line segments.
-    :param reach_hydroline_geometry_list: List of line geometry objects comprising the reach.
-    :return: Point geometry object at the geometric center of the reach, not necessarily coincident with any line
-        geometry.
-    """
-    # create extent object to work with
-    extent = arcpy.Extent()
-
-    # for every line geometry, get the extent
-    for line_geometry in reach_hydroline_geometry_list:
-
-        # if the xmin is less than the saved value, save it
-        if line_geometry.XMin < extent.XMin:
-            extent.XMin = line_geometry.XMin
-
-        # if the ymin is less than the saved value, save it
-        if line_geometry.YMin < extent.YMin:
-            extent.YMin = line_geometry.YMin
-
-        # if the xmax is greater than the saved value, save it
-        if line_geometry.XMax > extent.XMax:
-            extent.XMax = line_geometry.XMax
-
-        # if the ymax is greater than the saved value, save it
-        if line_geometry.YMax > extent.YMax:
-            extent.YMax = line_geometry.YMax
-
-    # create a point centroid and return it
-    return arcpy.Point(
-        X=extent.XMin + (extent.YMax - extent.YMin) / 2,
-        Y=extent.YMin + (extent.YMax - extent.YMin) / 2
-    )
-
-
-def create_reach_centroid_feature_class(reach_hydroline_feature_class, output_reach_centroids):
-    """
-    Create a feature class consisting of little more than centroids for each reach for symbolizing at smaller scales.
-    :param reach_hydroline_feature_class: Reach hydroline feature class.
-    :param output_reach_centroids: Location and name for output point feature class.
-    :return: String path to output.
-    """
-    # make feature class using the input hydrolines for a schema template
-    arcpy.CreateFeatureclass_management(
-        out_path=os.path.dirname(output_reach_centroids),
-        out_name=os.path.basename(output_reach_centroids),
-        template=reach_hydroline_feature_class
-    )
