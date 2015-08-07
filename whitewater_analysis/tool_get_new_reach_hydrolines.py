@@ -1,7 +1,7 @@
 """
 author:     Joel McCune (joel.mccune+gis@gmail.com)
 dob:        04 Dec 2014
-purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
+purpose:    Provide a tool wrapper for extracting and saving new reach hydrolines.
 
     Copyright 2014 Joel McCune
 
@@ -20,10 +20,10 @@ purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
 # import modules
 from arcpy import GetParameter
 from arcpy import GetParameterAsText
-from utilities import get_reach_line_fc
+from utilities import get_new_hydrolines
 
 # collect input parameters and run functions
-get_reach_line_fc(
+get_new_hydrolines(
     access_fc=GetParameter(0),
     hydro_network=GetParameter(1),
     reach_hydroline_fc=GetParameterAsText(2),
