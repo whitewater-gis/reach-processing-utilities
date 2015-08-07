@@ -20,7 +20,6 @@ purpose:    Provide the utilities to process and work with whitewater reach data
 # import modules
 import os.path
 import time
-
 import arcpy
 
 from validate import validate_reach
@@ -190,8 +189,8 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     # for every reach
     for reach_id in reach_id_list:
 
-        # check to see if the reach is manually digitized
-        if check_if_hydroline_manually_digitized(reach_hydroline_fc, reach_id):
+        # check to see if the reach is manually digitized, and if it has been, leave it alone
+        if not check_if_hydroline_manually_digitized(reach_hydroline_fc, reach_id):
 
             # process the current reach
             reach = process_reach(reach_id, access_fc, hydro_network)
@@ -224,3 +223,33 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     arcpy.AddMessage('{}% ({}/{}) reaches were processed.'.format(int(float(valid_count)/len(reach_id_list)*100),
                                                                   valid_count, len(reach_id_list)))
 
+
+def get_new_hydrolines(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
+    """
+    Process accesses that do not yet have a hydroline.
+    :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
+                  takeout. These fields must store the reach id for the point role as a putin or takeout.
+    :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
+    :param reach_hydroline_fc: Output line feature class for output hydrolines.
+    :param reach_invalid_tbl: Output table listing invalid reaches with the reason.
+    :return:
+    """
+    # get a list of all reach id's from the hydroline feature class
+    hydroline_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(reach_hydroline_fc, 'reach_id')]
+
+    # create an access feature layer
+    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_lyr')[0]
+
+    # select accesses already processed
+    for reach_id in hydroline_reach_id_list:
+        arcpy.SelectLayerByAttribute_management(
+            in_layer_or_view=access_lyr,
+            selection_type='ADD_TO_SELECTION',
+            where_clause="putin = '{}' OR takeout = '{}' OR intermediate = '{}'".format(reach_id, reach_id, reach_id)
+        )
+
+    # switch the selection from existing hydrolines to those unselected...the ones not yet processed
+    arcpy.SelectLayerByAttribute_management(access_lyr, 'SWITCH_SELECTION')
+
+    # now, with only the unprocessed reaches selected, stand back and let the big dog eat
+    get_reach_line_fc(access_lyr, hydro_network, reach_hydroline_fc, reach_invalid_tbl)
