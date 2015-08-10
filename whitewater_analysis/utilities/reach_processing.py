@@ -279,11 +279,17 @@ def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature
         # use the huc4 geometry to select the accesses
         arcpy.SelectLayerByLocation_management(access_layer, "INTERSECT", huc4_dict['geometry'])
 
+        # provide information to front end
+        arcpy.AddMessage('Starting to process HUC4 Subregion {}'.format(huc4_dict['huc4']))
+
         # using the selected accesses, use the correct subregion geometric network to extract hydrolines
         get_new_hydrolines(
-            access_fc=access_fc,
+            access_fc=access_layer,
             hydro_network=os.path.join(huc4_subregion_directory, '{}.gdb'.format(huc4_dict['huc4']), 'HYDROGRAPHY',
                                        'HYDRO_NET'),
             reach_hydroline_fc=reach_hydroline_fc,
             reach_invalid_tbl=reach_invalid_tbl
         )
+
+        # provide information to front end
+        arcpy.AddMessage('Finished processing HUC4 Subregion {}'.format(huc4_dict['huc4']))
