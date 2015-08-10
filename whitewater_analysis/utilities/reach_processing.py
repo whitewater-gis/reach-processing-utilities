@@ -219,9 +219,13 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
                     # insert a record in the feature class for the geometry
                     cursor_invalid.insertRow((str(reach['reach_id']), reach['reason']))
 
-    # at the very end, report the success rate
-    arcpy.AddMessage('{}% ({}/{}) reaches were processed.'.format(int(float(valid_count)/len(reach_id_list)*100),
-                                                                  valid_count, len(reach_id_list)))
+    # at the very end, report the success rate...or if nothing found...report this as well
+    if valid_count:
+        arcpy.AddMessage('{}% ({}/{}) reaches were processed.'.format(int(float(valid_count)/len(reach_id_list)*100),
+                                                                      valid_count, len(reach_id_list)))
+
+    else:
+        arcpy.AddMessage('No reaches found or processed.')
 
 
 def get_new_hydrolines(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
@@ -253,6 +257,32 @@ def get_new_hydrolines(access_fc, hydro_network, reach_hydroline_fc, reach_inval
 
     # now, with only the unprocessed reaches selected, stand back and let the big dog eat
     get_reach_line_fc(access_lyr, hydro_network, reach_hydroline_fc, reach_invalid_tbl)
+
+
+def revise_invalid_table(reach_hydroline_feature_class, reach_invalid_table):
+    """
+    Remove records from the invalid table which have been successfully traced and are now in the hydrolines.
+    :param reach_hydroline_feature_class: Feature class with traced or manually digitized hydrolines.
+    :param reach_invalid_table: Table used for tracking invalid reaches.
+    :return:
+    """
+    # create a list of all hydroline reach id's, representing successful traces
+    hydroline_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(reach_hydroline_feature_class, 'reach_id')]
+
+    # create update cursor for deleting rows in the invalid table
+    with arcpy.da.UpdateCursor(reach_invalid_table, 'reach_id') as update_cursor:
+
+        # iterate the rows in the invalid table
+        for row in update_cursor:
+
+            # iterate the hydroline reach id list
+            for hydroline_reach_id in hydroline_reach_id_list:
+
+                # if the current invalid reach id matches this successfully traced hydroline
+                if row[0] == hydroline_reach_id:
+
+                    # remove the row from the invalid table
+                    update_cursor.deleteRow()
 
 
 def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc,
@@ -293,3 +323,6 @@ def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature
 
         # provide information to front end
         arcpy.AddMessage('Finished processing HUC4 Subregion {}'.format(huc4_dict['huc4']))
+
+    # update invalid table
+    revise_invalid_table(reach_hydroline_fc, reach_invalid_tbl)
