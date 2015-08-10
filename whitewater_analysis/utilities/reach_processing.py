@@ -284,6 +284,9 @@ def revise_invalid_table(reach_hydroline_feature_class, reach_invalid_table):
                     # remove the row from the invalid table
                     update_cursor.deleteRow()
 
+                    # break out of the loop
+                    break
+
 
 def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc,
                                reach_invalid_tbl):
