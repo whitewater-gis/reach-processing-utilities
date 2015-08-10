@@ -199,13 +199,13 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             if reach['valid']:
 
                 # create an insert cursor
-                with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'SHAPE@')) as cursor_valid:
+                with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@')) as cursor_valid:
 
                     # iterate the geometry objects in the list
                     for geometry in reach['geometry_list']:
 
                         # insert a record in the feature class for the geometry
-                        cursor_valid.insertRow((reach['reach_id'], geometry))
+                        cursor_valid.insertRow((reach['reach_id'], 0, geometry))
 
                 # increment the valid counter
                 valid_count += 1
