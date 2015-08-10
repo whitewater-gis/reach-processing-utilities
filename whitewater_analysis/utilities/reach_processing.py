@@ -253,3 +253,36 @@ def get_new_hydrolines(access_fc, hydro_network, reach_hydroline_fc, reach_inval
 
     # now, with only the unprocessed reaches selected, stand back and let the big dog eat
     get_reach_line_fc(access_lyr, hydro_network, reach_hydroline_fc, reach_invalid_tbl)
+
+
+def process_all_new(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc, reach_invalid_tbl):
+    """
+
+    :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
+                  takeout. These fields must store the reach id for the point role as a putin or takeout.
+    :param huc4_subregion_directory: Directory where downloaded file geodatabases reside for
+    :param huc4_feature_class: Polygon feature class delineating HUC4 regions.
+    :param reach_hydroline_fc: Hydroline feature class where hydrolines will be written to.
+    :param reach_invalid_tbl: Table where invalid features will be written to.
+    :return:
+    """
+    # iterate huc4 feature class and create list of hash's with huc4 and geometry
+    huc4_dict_list = [{'huc4': row[0], 'geometry': row[1]} for row in arcpy.da.SearchCursor(huc4_feature_class, ['HUC4', 'SHAPE@'])]
+
+    # create an access layer from the input access feature class
+    access_layer = arcpy.MakeFeatureLayer_management(access_fc, 'access_layer')[0]
+
+    # for each huc4 dict object
+    for huc4_dict in huc4_dict_list:
+
+        # use the huc4 geometry to select the accesses
+        arcpy.SelectLayerByLocation_management(access_layer, "INTERSECT", huc4_dict['geometry'])
+
+        # using the selected accesses, use the correct subregion geometric network to extract hydrolines
+        get_new_hydrolines(
+            access_fc=access_fc,
+            hydro_network=os.path.join(huc4_subregion_directory, '{}.gdb'.format(huc4_dict['huc4']), 'HYDROGRAPHY',
+                                       'HYDRO_NET'),
+            reach_hydroline_fc=reach_hydroline_fc,
+            reach_invalid_tbl=reach_invalid_tbl
+        )
