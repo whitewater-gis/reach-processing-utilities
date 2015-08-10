@@ -255,7 +255,8 @@ def get_new_hydrolines(access_fc, hydro_network, reach_hydroline_fc, reach_inval
     get_reach_line_fc(access_lyr, hydro_network, reach_hydroline_fc, reach_invalid_tbl)
 
 
-def process_all_new(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc, reach_invalid_tbl):
+def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc,
+                               reach_invalid_tbl):
     """
 
     :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
