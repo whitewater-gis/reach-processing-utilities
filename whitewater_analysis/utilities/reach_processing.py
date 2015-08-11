@@ -238,22 +238,23 @@ def get_new_hydrolines(access_fc, hydro_network, reach_hydroline_fc, reach_inval
     :param reach_invalid_tbl: Output table listing invalid reaches with the reason.
     :return:
     """
-    # get a list of all reach id's from the hydroline feature class
-    hydroline_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(reach_hydroline_fc, 'reach_id')]
+    # get a list of all unique permutations of reach ids in the hydroline feature class
+    hydroline_reach_id_list = set(row[0] for row in arcpy.da.SearchCursor(reach_hydroline_fc, 'reach_id'))
 
-    # create an access feature layer
-    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_lyr')[0]
+    # get a list of all unique permutations of reach ids in the access feature class
+    putin_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(access_fc, 'putin')]
+    takeout_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(access_fc, 'takeout')]
+    access_reach_id_list = set(putin_reach_id_list + takeout_reach_id_list)
 
-    # select accesses already processed
-    for reach_id in hydroline_reach_id_list:
-        arcpy.SelectLayerByAttribute_management(
-            in_layer_or_view=access_lyr,
-            selection_type='ADD_TO_SELECTION',
-            where_clause="putin = '{}' OR takeout = '{}' OR intermediate = '{}'".format(reach_id, reach_id, reach_id)
-        )
+    # get list of reach ids not in the hydroline feature class, those we need to process
+    reach_id_queue = [reach_id for reach_id in access_reach_id_list if reach_id not in hydroline_reach_id_list]
 
-    # switch the selection from existing hydrolines to those unselected...the ones not yet processed
-    arcpy.SelectLayerByAttribute_management(access_lyr, 'SWITCH_SELECTION')
+    # where clause to select all putins and takeouts in the reach id queue
+    where_list = ["putin = '{}' OR takeout = '{}'".format(reach_id, reach_id) for reach_id in reach_id_queue]
+    where_string = ' OR '.join(where_list)
+
+    # create an access feature layer using monster where clause
+    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_lyr', where_string)[0]
 
     # now, with only the unprocessed reaches selected, stand back and let the big dog eat
     get_reach_line_fc(access_lyr, hydro_network, reach_hydroline_fc, reach_invalid_tbl)
@@ -269,7 +270,7 @@ def revise_invalid_table(reach_hydroline_feature_class, reach_invalid_table):
     # create a list of all hydroline reach id's, representing successful traces
     hydroline_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(reach_hydroline_feature_class, 'reach_id')]
 
-    # create update cursor for deleting rows in the invalid table
+    # create update cursor for deleting rows now validated from the invalid table
     with arcpy.da.UpdateCursor(reach_invalid_table, 'reach_id') as update_cursor:
 
         # iterate the rows in the invalid table
@@ -287,11 +288,35 @@ def revise_invalid_table(reach_hydroline_feature_class, reach_invalid_table):
                     # break out of the loop
                     break
 
+    # create list of all unique invalid reach id's
+    reach_id_list = [row[0] for row in arcpy.da.SearchCursor(reach_invalid_table, 'reach_id')]
+
+    # create table view to work with
+    invalid_table_view = arcpy.MakeTableView_management(reach_invalid_table, 'invalid_tbl_view')[0]
+
+    # for each invalid reach id
+    for reach_id in reach_id_list:
+
+        # select all instances of the reach_id
+        arcpy.SelectLayerByAttribute_management(invalid_table_view, "reach_id = {}".format(reach_id))
+
+        # create an update cursor
+        with arcpy.da.UpdateCursor(invalid_table_view, 'reach_id') as update_cursor:
+
+            # create counter
+            reach_id_counter = 0
+
+            # use cursor to iterate rows
+            for row in update_cursor:
+
+                # if the counter is greater than zero, delete the row and increment the counter
+                if reach_id_counter > 0:
+                    update_cursor.deleteRow(row)
+
 
 def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc,
                                reach_invalid_tbl):
     """
-
     :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
                   takeout. These fields must store the reach id for the point role as a putin or takeout.
     :param huc4_subregion_directory: Directory where downloaded file geodatabases reside for
