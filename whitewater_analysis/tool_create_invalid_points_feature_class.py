@@ -25,5 +25,5 @@ from utilities import create_invalid_points_feature_class
 create_invalid_points_feature_class(
     access_feature_class=GetParameterAsText(0),
     invalid_reach_table=GetParameterAsText(1),
-    invalid_points_feature_class=GetParameterAsText(1)
+    invalid_points_feature_class=GetParameterAsText(2)
 )
