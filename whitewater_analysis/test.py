@@ -258,3 +258,15 @@ class TestCaseJoinMetaToAccess(unittest.TestCase):
         join_table = r'F:\reach-processing\aggregate\aggregate20150721.gdb\reach_meta'
         path = utilities.reach_processing.join_table_to_access(access_fc, join_table)
         self.assertTrue(len(path))
+
+
+class TestCasePublishTasks(unittest.TestCase):
+
+    # paths to data
+    access_fc = r'F:\reach-processing\aggregate\publish20150721.gdb\access'
+
+    def test_create_invalid_reach_feature_class(self):
+        invalid_table = r'F:\reach-processing\aggregate\data.gdb\reach_invalid'
+        invalid_feature_class = r'F:\reach-processing\aggregate\data.gdb\reach_invalid_points'
+        utilities.create_invalid_points_feature_class(access_fc, invalid_table, invalid_feature_class)
+        self.assertTrue(int(arcpy.GetCount_management(invalid_table)) == int(arcpy.GetCount_management(invalid_feature_class)))

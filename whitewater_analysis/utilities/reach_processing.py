@@ -268,7 +268,7 @@ def revise_invalid_table(reach_hydroline_feature_class, reach_invalid_table):
     :return:
     """
     # create a list of all hydroline reach id's, representing successful traces
-    hydroline_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(reach_hydroline_feature_class, 'reach_id')]
+    hydroline_reach_id_list = set(row[0] for row in arcpy.da.SearchCursor(reach_hydroline_feature_class, 'reach_id'))
 
     # create update cursor for deleting rows now validated from the invalid table
     with arcpy.da.UpdateCursor(reach_invalid_table, 'reach_id') as update_cursor:
@@ -288,30 +288,8 @@ def revise_invalid_table(reach_hydroline_feature_class, reach_invalid_table):
                     # break out of the loop
                     break
 
-    # create list of all unique invalid reach id's
-    reach_id_list = [row[0] for row in arcpy.da.SearchCursor(reach_invalid_table, 'reach_id')]
-
-    # create table view to work with
-    invalid_table_view = arcpy.MakeTableView_management(reach_invalid_table, 'invalid_tbl_view')[0]
-
-    # for each invalid reach id
-    for reach_id in reach_id_list:
-
-        # select all instances of the reach_id
-        arcpy.SelectLayerByAttribute_management(invalid_table_view, "reach_id = {}".format(reach_id))
-
-        # create an update cursor
-        with arcpy.da.UpdateCursor(invalid_table_view, 'reach_id') as update_cursor:
-
-            # create counter
-            reach_id_counter = 0
-
-            # use cursor to iterate rows
-            for row in update_cursor:
-
-                # if the counter is greater than zero, delete the row and increment the counter
-                if reach_id_counter > 0:
-                    update_cursor.deleteRow(row)
+    # delete duplicates
+    arcpy.DeleteIdentical_management(reach_invalid_table, 'reach_id')
 
 
 def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc,
@@ -337,20 +315,108 @@ def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature
         # use the huc4 geometry to select the accesses
         arcpy.SelectLayerByLocation_management(access_layer, "INTERSECT", huc4_dict['geometry'])
 
-        # provide information to front end
-        arcpy.AddMessage('Starting to process HUC4 Subregion {}'.format(huc4_dict['huc4']))
+        # if there are no reaches in the subregion
+        if not int(arcpy.GetCount_management(access_layer)[0]):
+            arcpy.AddMessage('HUC4 Subregion {} has no reaches.'.format(huc4_dict['huc4']))
 
-        # using the selected accesses, use the correct subregion geometric network to extract hydrolines
-        get_new_hydrolines(
-            access_fc=access_layer,
-            hydro_network=os.path.join(huc4_subregion_directory, '{}.gdb'.format(huc4_dict['huc4']), 'HYDROGRAPHY',
-                                       'HYDRO_NET'),
-            reach_hydroline_fc=reach_hydroline_fc,
-            reach_invalid_tbl=reach_invalid_tbl
-        )
+        # otherwise, if there are reaches
+        else:
+            # provide information to front end
+            arcpy.AddMessage('Starting to process HUC4 Subregion {}'.format(huc4_dict['huc4']))
 
-        # provide information to front end
-        arcpy.AddMessage('Finished processing HUC4 Subregion {}'.format(huc4_dict['huc4']))
+            # using the selected accesses, use the correct subregion geometric network to extract hydrolines
+            get_new_hydrolines(
+                access_fc=access_layer,
+                hydro_network=os.path.join(huc4_subregion_directory, '{}.gdb'.format(huc4_dict['huc4']), 'HYDROGRAPHY',
+                                           'HYDRO_NET'),
+                reach_hydroline_fc=reach_hydroline_fc,
+                reach_invalid_tbl=reach_invalid_tbl
+            )
+
+            # provide information to front end
+            arcpy.AddMessage('Finished processing HUC4 Subregion {}'.format(huc4_dict['huc4']))
 
     # update invalid table
     revise_invalid_table(reach_hydroline_fc, reach_invalid_tbl)
+
+
+def create_invalid_points_feature_class(access_feature_class, invalid_reach_table, invalid_points_feature_class):
+    """
+    Create a feature class of centroid points for the invalid reaches.
+    :param access_feature_class: Point feature class of all accesses.
+    :param invalid_reach_table: Table of reaches not passing validation.
+    :return: Path to invalid points feature class.
+    """
+    # create tuple pairs of putin and takeout reach ids and geometries
+    putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('putin', 'SHAPE@XY'), "putin IS NOT NULL AND putin <> '0'")]
+    takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('takeout', 'SHAPE@XY'), "takeout IS NOT NULL AND takeout <> '0'")]
+
+    # create a list of invalid reach id's and invalid reasons
+    invalid_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(invalid_reach_table, ('reach_id', 'reason'))]
+
+    # create a list to store invalid reaches
+    invalid_point_list = []
+
+    # for every invalid reach
+    for invalid_reach in invalid_list:
+
+        # find the coordinates for the putin and takeout
+        putin_coords = [reach_id[1] for reach_id in putin_list if reach_id[0] == invalid_reach[0]][0]
+        takeout_coords = [reach_id[1] for reach_id in takeout_list if reach_id[0] == invalid_reach[0]][0]
+
+        # compare the coordinates to ascertain which is min and max, and then calculate the median
+        def get_median_coord(putin_coord, takeout_coord):
+            if putin_coord == None and takeout_coord == None:
+                return None
+            elif putin_coord == None:
+                return takeout_coord
+            elif takeout_coord == None:
+                return putin_coord
+            elif putin_coord > takeout_coord:
+                return putin_coord - (putin_coord - takeout_coord) / 2
+            else:
+                return takeout_coord - (takeout_coord - putin_coord) / 2
+
+        # get the coordinates
+        x = get_median_coord(putin_coords[0], takeout_coords[0])
+        y = get_median_coord(putin_coords[1], takeout_coords[1])
+
+        # add the reach to the list
+        if x and y:
+            invalid_point_list.append((invalid_reach[0], invalid_reach[1], (x, y)))
+
+    # create the output feature class
+    out_fc = arcpy.CreateFeatureclass_management(
+        out_path=os.path.dirname(invalid_points_feature_class),
+        out_name=os.path.basename(invalid_points_feature_class),
+        geometry_type='POINT',
+        spatial_reference=arcpy.Describe(access_feature_class).spatialReference
+    )[0]
+
+    # add the fields
+    arcpy.AddField_management(
+        in_table=out_fc,
+        field_name='reach_id',
+        field_type='TEXT',
+        field_length=10,
+        field_alias='Reach ID'
+    )
+    arcpy.AddField_management(
+        in_table=out_fc,
+        field_name='reason',
+        field_type='TEXT',
+        field_length=200,
+        field_alias='Reason'
+    )
+
+    # use an insert cursor to add records to the feature class
+    with arcpy.da.InsertCursor(out_fc, ('reach_id', 'reason', 'SHAPE@XY')) as cursor:
+
+        # iterate the invalid list
+        for invalid_point in invalid_point_list:
+
+            # insert a new record
+            cursor.insertRow(invalid_point)
+
+    # return the path to the output feature class
+    return out_fc

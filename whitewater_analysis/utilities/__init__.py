@@ -2,7 +2,8 @@
 from reach_processing import (
     get_reach_line_fc,
     get_new_hydrolines,
-    process_all_new_hydrolines
+    process_all_new_hydrolines,
+    create_invalid_points_feature_class
 )
 
 from nhd_data import (
