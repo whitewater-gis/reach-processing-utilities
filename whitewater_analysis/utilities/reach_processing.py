@@ -199,13 +199,13 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             if reach['valid']:
 
                 # create an insert cursor
-                with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@')) as cursor_valid:
+                with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@')) as cursor:
 
                     # iterate the geometry objects in the list
                     for geometry in reach['geometry_list']:
 
                         # insert a record in the feature class for the geometry
-                        cursor_valid.insertRow((reach['reach_id'], 0, geometry))
+                        cursor.insertRow((reach['reach_id'], 0, geometry))
 
                 # increment the valid counter
                 valid_count += 1
@@ -366,11 +366,11 @@ def create_invalid_points_feature_class(access_feature_class, invalid_reach_tabl
 
         # compare the coordinates to ascertain which is min and max, and then calculate the median
         def get_median_coord(putin_coord, takeout_coord):
-            if putin_coord == None and takeout_coord == None:
+            if putin_coord is None and takeout_coord is None:
                 return None
-            elif putin_coord == None:
+            elif putin_coord is None:
                 return takeout_coord
-            elif takeout_coord == None:
+            elif takeout_coord is None:
                 return putin_coord
             elif putin_coord > takeout_coord:
                 return putin_coord - (putin_coord - takeout_coord) / 2

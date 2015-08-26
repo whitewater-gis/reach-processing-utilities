@@ -6,6 +6,8 @@ from reach_processing import (
     create_invalid_points_feature_class
 )
 
+from publishing_tools import create_reach_centroids
+
 from nhd_data import (
     get_nhd_subregion,
     build_subregion_directory

@@ -29,6 +29,7 @@ import arcpy
 import utilities.nhd_data
 import utilities.validate
 import utilities.reach_processing
+import utilities.publishing_tools.create_reach_centroids
 
 
 # variables
@@ -270,3 +271,8 @@ class TestCasePublishTasks(unittest.TestCase):
         invalid_feature_class = r'F:\reach-processing\aggregate\data.gdb\reach_invalid_points'
         utilities.create_invalid_points_feature_class(access_fc, invalid_table, invalid_feature_class)
         self.assertTrue(int(arcpy.GetCount_management(invalid_table)) == int(arcpy.GetCount_management(invalid_feature_class)))
+
+    def test_create_reach_centroids(self):
+        hydroline_fc = r'F:\reach-processing\aggregate\publish20150824.gdb\hydrolines'
+        hydro_centroid_fc = r'F:\reach-processing\aggregate\publish20150824.gdb\hydropoints'
+        utilities.create_reach_centroids(hydroline_fc, hydro_centroid_fc)
