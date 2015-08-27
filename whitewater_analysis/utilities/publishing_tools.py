@@ -72,7 +72,7 @@ def get_centroid(hydroline_fc, reach_id):
     return arcpy.PointGeometry(centroid_x, centroid_y)
 
 
-def create_reach_centroids(reach_hydroline_feature_class, output_centroid_feature_class):
+def create_hydropoint_feature_class(reach_hydroline_feature_class, output_centroid_feature_class):
     """
     Find the centroid of the reach hydroline feature class per reach. This workflow compensates for the possibility of
     reaches having multiple segments.

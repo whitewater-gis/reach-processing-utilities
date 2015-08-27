@@ -29,7 +29,7 @@ import arcpy
 import utilities.nhd_data
 import utilities.validate
 import utilities.reach_processing
-import utilities.publishing_tools.create_reach_centroids
+import utilities.create_hydropoint_feature_class
 
 
 # variables
@@ -275,4 +275,4 @@ class TestCasePublishTasks(unittest.TestCase):
     def test_create_reach_centroids(self):
         hydroline_fc = r'F:\reach-processing\aggregate\publish20150824.gdb\hydrolines'
         hydro_centroid_fc = r'F:\reach-processing\aggregate\publish20150824.gdb\hydropoints'
-        utilities.create_reach_centroids(hydroline_fc, hydro_centroid_fc)
+        utilities.create_hydropoint_feature_class(hydroline_fc, hydro_centroid_fc)
