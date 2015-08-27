@@ -50,7 +50,7 @@ def field_valid(field):
         return True
 
 
-def get_centroid(hydroline_fc, reach_id):
+def get_hydroline_centroid(hydroline_fc, reach_id):
     """
     Return a centroid geometry object based on one or more centroids for the reach id.
     :param hydroline_fc: Hydroline feature class.
@@ -69,7 +69,7 @@ def get_centroid(hydroline_fc, reach_id):
     centroid_y = numpy.mean([shape[1] for shape in centroid_list])
 
     # create a point geometry from the average x and y
-    return arcpy.PointGeometry(centroid_x, centroid_y)
+    return arcpy.PointGeometry(arcpy.Point(centroid_x, centroid_y))
 
 
 def create_hydropoint_feature_class(reach_hydroline_feature_class, output_centroid_feature_class):
@@ -113,23 +113,23 @@ def create_hydropoint_feature_class(reach_hydroline_feature_class, output_centro
     reach_id_list = list(set([row[0] for row in arcpy.da.SearchCursor(reach_hydroline_feature_class, 'reach_id')]))
 
     # create an insert cursor to add features
-    with arcpy.da.InsertCursor(centroid_feature_class, field_name_list + ['Geometry']) as insert_cursor:
+    with arcpy.da.InsertCursor(centroid_feature_class, field_name_list + ['SHAPE@']) as insert_cursor:
 
         # iterate the reach_id_list
         for reach_id in reach_id_list:
 
             # get the centroid
-            centroid = get_centroid(reach_hydroline_feature_class, reach_id)
+            centroid = get_hydroline_centroid(reach_hydroline_feature_class, reach_id)
 
             # get the rest of the field values
             field_value_list = [row for row in arcpy.da.SearchCursor(
                 reach_hydroline_feature_class,
                 field_name_list,
-                'reach_id'
+                "reach_id = '{}'".format(reach_id)
             )][0]
 
-            # add the centroid geometry onto the end of the list
-            field_value_list += centroid
+            # add the centroid geometry onto the end of the tuple
+            field_value_list += (centroid,)
 
             # use the insert cursor to add a new row
             insert_cursor.insertRow(field_value_list)
