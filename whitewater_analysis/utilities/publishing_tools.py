@@ -45,9 +45,42 @@ def field_valid(field):
     elif field.name == 'Shape_Area':
         return False
 
+    # exclude the reach id feature class...if it is needed, add it explicitly
+    elif field.name == 'reach_id':
+        return False
+
     # if it falls through this far, it must be good to go
     else:
         return True
+
+
+def add_fields_from_table(input_table, add_table):
+    """
+    Append attribute fields to the input table from the add table. This function does not populate the values. Rather,
+    it only reads the input field properties from the add table and adds these fields to the input table.
+    :param input_table: Table to add the fields to.
+    :param append_table: Table with fields to be added to the input table.
+    :return: List of fields added.
+    """
+    # get a list of fields from the table
+    meta_field_list = [field for field in arcpy.ListFields(add_table) if field_valid(field)]
+
+    # iterate the fields and add the field
+    for field in meta_field_list:
+
+        # add each field
+        arcpy.AddField_management(
+            in_table=input_table,
+            field_name=field.name,
+            field_type=field.type,
+            field_precision=field.precision,
+            field_scale=field.scale,
+            field_length=field.length,
+            field_alias=field.aliasName
+        )
+
+    # return list of field objects added to the table
+    return meta_field_list
 
 
 def get_hydroline_centroid(hydroline_fc, reach_id):
@@ -81,9 +114,6 @@ def create_hydropoint_feature_class(reach_hydroline_feature_class, output_centro
     :return:
     """
 
-    # get a list of all fields in the reach hydroline feature class
-    hydroline_field_list = [field for field in arcpy.ListFields(reach_hydroline_feature_class) if field_valid(field)]
-
     # create a hydroline point feature class
     centroid_feature_class = arcpy.CreateFeatureclass_management(
         out_path=os.path.dirname(output_centroid_feature_class),
@@ -92,25 +122,23 @@ def create_hydropoint_feature_class(reach_hydroline_feature_class, output_centro
         spatial_reference=arcpy.Describe(reach_hydroline_feature_class).spatialReference
     )[0]
 
-    # iterate the fields and add the field
-    for field in hydroline_field_list:
+    # explicitly add reach id field
+    arcpy.AddField_management(
+        in_table=centroid_feature_class,
+        field_name='reach_id',
+        field_type='TEXT',
+        field_length='20',
+        field_alias='Reach ID'
+    )
 
-        # add each field
-        arcpy.AddField_management(
-            in_table=centroid_feature_class,
-            field_name=field.name,
-            field_type=field.type,
-            field_precision=field.precision,
-            field_scale=field.scale,
-            field_length=field.length,
-            field_alias=field.aliasName
-        )
+    # add fields to output feature class
+    hydroline_field_list = add_fields_from_table(centroid_feature_class, reach_hydroline_feature_class)
 
     # get a list of field names
     field_name_list = [field.name for field in hydroline_field_list]
 
     # get a list of unique reach id's
-    reach_id_list = list(set([row[0] for row in arcpy.da.SearchCursor(reach_hydroline_feature_class, 'reach_id')]))
+    reach_id_list = set([row[0] for row in arcpy.da.SearchCursor(reach_hydroline_feature_class, 'reach_id')])
 
     # create an insert cursor to add features
     with arcpy.da.InsertCursor(centroid_feature_class, field_name_list + ['SHAPE@']) as insert_cursor:
@@ -136,3 +164,281 @@ def create_hydropoint_feature_class(reach_hydroline_feature_class, output_centro
 
     # return the path to the output
     return output_centroid_feature_class
+
+
+def create_feature_class_with_meta(input_feature_class, meta_table, output_feature_class):
+    """
+    Add meta to output feature class for publishing.
+    :param input_feature_class: The feature class only identified by the reach id.
+    :param meta_table: Table containing all meta information associated with the Reach ID.
+    :param output_feature_class: Output feature class to be created with all information contained in it.
+    :return: Path to the output feature class.
+    """
+    # copy the feature class to the output location
+    out_fc = arcpy.FeatureClassToFeatureClass_conversion(
+        in_features=input_feature_class,
+        out_path=os.path.dirname(output_feature_class),
+        out_name=os.path.basename(output_feature_class)
+    )[0]
+
+    # now, add the meta table fields onto the output feature class
+    out_field_list = add_fields_from_table(out_fc, meta_table)
+
+    # get a list of field names for the cursors, adding the reach_id field to the list
+    out_field_name_list = ['reach_id'] + [field.name for field in out_field_list]
+
+    # now, create an update cursor to populate meta into
+    with arcpy.da.UpdateCursor(out_fc, out_field_name_list) as update_cursor:
+
+        # iterate the rows in the output table
+        for update_row in update_cursor:
+
+            # get the row from the meta table
+            meta_row = [row for row in arcpy.da.SearchCursor(
+                meta_table, out_field_name_list, "reach_id = '{}'".format(row[0])
+            )][0]
+
+            # update the current row with information from the meta table if the data is found
+            if len(update_row):
+                update_cursor.updateRow(meta_row)
+
+    # return the path to the output data
+    return out_fc
+
+
+def get_navigation_link(xy_tuple):
+    """
+    Create a navigation link from a tuple containing an x and y tuple.
+    :param xy_tuple: Tuple of (x,y) coordinates.
+    :return: String url to be used for navigation.
+    """
+    return 'http://maps.google.com/maps?daddr={},{}&saddr=Current%20Location'.format(xy_tuple[0], xy_tuple[1])
+
+
+def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_class, parking_feature_class):
+    """
+    Add navigation link urls to the hydroline feature class for publishing.
+    :param hydroline_feature_class: Publication hydroline feature class.
+    :param access_feature_class: Access feature class adhering to standard schema.
+    :param parking_feature_class: Parking feature class adhering to standard schema.
+    :return:
+    """
+    # add the fields to the table to store navigation hyperlinks
+    arcpy.AddField_management(
+        in_table=hydroline_feature_class,
+        field_name='nav_link_putin',
+        field_type='TEXT',
+        field_length='300',
+        field_alias='Put In Navigation Link'
+    )
+    arcpy.AddField_management(
+        in_table=hydroline_feature_class,
+        field_name='nav_link_takeout',
+        field_type='TEXT',
+        field_length='300',
+        field_alias='Take Out Navigation Link'
+    )
+
+    # use an update cursor to iterate the reaches
+    with arcpy.da.UpdateCursor(
+            hydroline_feature_class, ('reach_id', 'nav_link_putin', 'nav_link_takeout')
+    ) as update_cursor:
+
+        # iterate the rows
+        for update_row in update_cursor:
+
+            # try to get the putin coordinates from the putin parking area
+            xy_putin = [row[0] for row in arcpy.da.SearchCursor(
+                parking_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 0".format(update_row[0])
+            )][0]
+
+            # if there is not a parking area
+            if not xy_putin:
+
+                # get the putin coordinates from the putin feature class
+                xy_putin = [row[0] for row in arcpy.da.SearchCursor(
+                    access_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 0".format(update_row[0])
+                )][0]
+
+            # modify the update cursor putin link with the navigation url
+            update_row[1] = get_navigation_link(xy_putin)
+
+            # try to get the takeout coordinates from the takeout parking area
+            xy_takeout = [row[0] for row in arcpy.da.SearchCursor(
+                access_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 1".format(update_row[0])
+            )][0]
+
+            # if there is not a parking area
+            if not xy_takeout:
+
+                # get the takeout coordinates using the reach_id from the update cursor
+                xy_takeout = [row[0] for row in arcpy.da.SearchCursor(
+                    access_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 1".format(update_row[0])
+                )][0]
+
+            # modify the update cursor takeout link with the navigation url
+            update_row[2] = get_navigation_link(xy_takeout)
+
+            # commit the changes
+            update_cursor.updateRow(update_row)
+
+
+def add_link_to_american_whitewater_reach_page(table_with_reach_id):
+    """
+    Add and populate a field with the link url back to the American Whitewater reach page.
+    :param table_with_reach_id: Table with reach id field.
+    :return:
+    """
+    # add the field to store the link
+    arcpy.AddField_management(
+        in_table=table_with_reach_id,
+        field_name='nav_link_aw',
+        field_type='TEXT',
+        field_length='300',
+        field_alias='AW Reach Page Link'
+    )
+
+    # use an update cursor to iterate the rows
+    with arcpy.da.UpdateCursor(table_with_reach_id, ('reach_id', 'nav_link_aw')) as update_cursor:
+
+        # iterate the rows
+        for row in update_cursor:
+
+            # combine the reach_id to create the url string
+            row[1] = 'http://www.americanwhitewater.org/content/River/detail/id/{}/'.format(row[0])
+
+            # commit the changes
+            update_cursor.updateRow(row)
+
+
+def create_invalid_points_feature_class(access_feature_class, invalid_reach_table, invalid_points_feature_class):
+    """
+    Create a feature class of centroid points for the invalid reaches.
+    :param access_feature_class: Point feature class of all accesses.
+    :param invalid_reach_table: Table of reaches not passing validation.
+    :return: Path to invalid points feature class.
+    """
+    # create tuple pairs of putin and takeout reach ids and geometries
+    putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('putin', 'SHAPE@XY'), "putin IS NOT NULL AND putin <> '0'")]
+    takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('takeout', 'SHAPE@XY'), "takeout IS NOT NULL AND takeout <> '0'")]
+
+    # create a list of invalid reach id's and invalid reasons
+    invalid_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(invalid_reach_table, ('reach_id', 'reason'))]
+
+    # create a list to store invalid reaches
+    invalid_point_list = []
+
+    # for every invalid reach
+    for invalid_reach in invalid_list:
+
+        # find the coordinates for the putin and takeout
+        putin_coords = [reach_id[1] for reach_id in putin_list if reach_id[0] == invalid_reach[0]][0]
+        takeout_coords = [reach_id[1] for reach_id in takeout_list if reach_id[0] == invalid_reach[0]][0]
+
+        # compare the coordinates to ascertain which is min and max, and then calculate the median
+        def get_median_coord(putin_coord, takeout_coord):
+            if putin_coord is None and takeout_coord is None:
+                return None
+            elif putin_coord is None:
+                return takeout_coord
+            elif takeout_coord is None:
+                return putin_coord
+            elif putin_coord > takeout_coord:
+                return putin_coord - (putin_coord - takeout_coord) / 2
+            else:
+                return takeout_coord - (takeout_coord - putin_coord) / 2
+
+        # get the coordinates
+        x = get_median_coord(putin_coords[0], takeout_coords[0])
+        y = get_median_coord(putin_coords[1], takeout_coords[1])
+
+        # add the reach to the list
+        if x and y:
+            invalid_point_list.append((invalid_reach[0], invalid_reach[1], (x, y)))
+
+    # create the output feature class
+    out_fc = arcpy.CreateFeatureclass_management(
+        out_path=os.path.dirname(invalid_points_feature_class),
+        out_name=os.path.basename(invalid_points_feature_class),
+        geometry_type='POINT',
+        spatial_reference=arcpy.Describe(access_feature_class).spatialReference
+    )[0]
+
+    # add the fields
+    arcpy.AddField_management(
+        in_table=out_fc,
+        field_name='reach_id',
+        field_type='TEXT',
+        field_length=10,
+        field_alias='Reach ID'
+    )
+    arcpy.AddField_management(
+        in_table=out_fc,
+        field_name='reason',
+        field_type='TEXT',
+        field_length=200,
+        field_alias='Reason'
+    )
+
+    # use an insert cursor to add records to the feature class
+    with arcpy.da.InsertCursor(out_fc, ('reach_id', 'reason', 'SHAPE@XY')) as cursor:
+
+        # iterate the invalid list
+        for invalid_point in invalid_point_list:
+
+            # insert a new record
+            cursor.insertRow(invalid_point)
+
+    # return the path to the output feature class
+    return out_fc
+
+
+def create_publication_geodatabase(analysis_gdb, publication_gdb):
+    """
+    From the lightweight analysis database, create a publication database with denormalized data ready to push to AGOL.
+    :param analysis_gdb: Location of analysis geodatabase.
+    :param publication_gdb: Path with name of output publication geodatabase.
+    :return: Path to publication geodatabase.
+    """
+    # create the output geodatabase
+    out_gdb = arcpy.CreateFileGDB_management(
+        out_folder_path=os.path.dirname(publication_gdb),
+        out_name=os.path.basename(publication_gdb),
+        out_version='CURRENT'
+    )[0]
+
+    # save full path to meta table
+    meta_table = os.path.join(analysis_gdb, 'reach_meta')
+
+    # for all the needed feature classes, copy to the publication geodatabase with meta added
+    for feature_class in ['access', 'hydroline', 'parking', 'rapid', 'trail']:
+
+        # create full path variables to resources
+        in_fc = os.path.join(analysis_gdb, feature_class)
+        out_fc = os.path.join(out_gdb, feature_class)
+
+        # create and add meta to output feature class
+        create_feature_class_with_meta(in_fc, meta_table, out_fc)
+
+        # since they all reference AW reaches, make it easy to link back to AW
+        add_link_to_american_whitewater_reach_page(out_fc)
+
+    # add navigation links to hydrolines
+    add_navigation_links_to_hydrolines(
+        os.path.join(out_gdb, 'hydroline'),
+        os.path.join(out_gdb, 'access'),
+        os.path.join(out_gdb, 'parking')
+    )
+
+    # create hydropoints feature class
+    create_hydropoint_feature_class(
+        os.path.join(out_gdb, 'hydroline'),
+        os.path.join(out_gdb, 'hydropoint')
+    )
+
+    # create invalid point feature class
+    create_invalid_points_feature_class(
+        os.path.join(out_gdb, 'access'),
+        os.path.join(analysis_gdb, 'reach_invalid'),
+        os.path.join(out_gdb, 'reach_invalid_points')
+    )
