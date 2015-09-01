@@ -23,6 +23,16 @@ import numpy
 import arcpy
 
 
+def get_reach_id_field(feature_class):
+    """
+    Get the reach id field.
+    :param feature_class: Feature class with a reach id field.
+    :return: String name of the reach id field.
+    """
+    # get the reach id field possibly dorked up through the join
+    return [field.name for field in arcpy.ListFields(feature_class, '*reach_id*')][0]
+
+
 def field_valid(field):
     """
     Utility to exclude fields not user added
@@ -31,6 +41,10 @@ def field_valid(field):
     """
     # exclude object id
     if field.type == 'OID':
+        return False
+
+    # exclude global id field
+    if field.type == 'GlobalID':
         return False
 
     # exclude the geometry field
@@ -166,41 +180,48 @@ def create_hydropoint_feature_class(reach_hydroline_feature_class, output_centro
     return output_centroid_feature_class
 
 
-def create_feature_class_with_meta(input_feature_class, meta_table, output_feature_class):
+def create_feature_class_with_meta(input_feature_class, meta_table, target_feature_class):
     """
     Add meta to output feature class for publishing.
     :param input_feature_class: The feature class only identified by the reach id.
     :param meta_table: Table containing all meta information associated with the Reach ID.
-    :param output_feature_class: Output feature class to be created with all information contained in it.
+    :param target_feature_class: Output feature class to be created with all information contained in it.
     :return: Path to the output feature class.
     """
+    # create a layer from the input feature class
+    in_lyr = arcpy.MakeFeatureLayer_management(input_feature_class, 'in_lyr')[0]
+
+    # create a fieldinfo object
+    field_info = arcpy.FieldInfo()
+
+    # iterate the fields in the join table
+    for field in arcpy.ListFields(meta_table):
+
+        # if the field is valid, make visible
+        if field_valid(field) or field.name == 'reach_id':
+            vis = 'VISIBLE'
+        else:
+            vis = 'HIDDEN'
+
+        # add the field to the field info object with the visibility
+        field_info.addField(field.name, field.name, vis, 'NONE')
+
+    # create a table view from the meta table
+    meta_vw = arcpy.MakeTableView_management(meta_table, 'meta_vw', field_info=field_info)[0]
+
+    # join the meta table to the input features
+    arcpy.AddJoin_management(
+        in_layer_or_view=in_lyr,
+        in_field='reach_id',
+        join_table=meta_vw,
+        join_field='reach_id'
+    )
+
     # copy the feature class to the output location
-    out_fc = arcpy.FeatureClassToFeatureClass_conversion(
-        in_features=input_feature_class,
-        out_path=os.path.dirname(output_feature_class),
-        out_name=os.path.basename(output_feature_class)
+    out_fc = arcpy.CopyFeatures_management(
+        in_features=in_lyr,
+        out_feature_class=target_feature_class
     )[0]
-
-    # now, add the meta table fields onto the output feature class
-    out_field_list = add_fields_from_table(out_fc, meta_table)
-
-    # get a list of field names for the cursors, adding the reach_id field to the list
-    out_field_name_list = ['reach_id'] + [field.name for field in out_field_list]
-
-    # now, create an update cursor to populate meta into
-    with arcpy.da.UpdateCursor(out_fc, out_field_name_list) as update_cursor:
-
-        # iterate the rows in the output table
-        for update_row in update_cursor:
-
-            # get the row from the meta table
-            meta_row = [row for row in arcpy.da.SearchCursor(
-                meta_table, out_field_name_list, "reach_id = '{}'".format(row[0])
-            )][0]
-
-            # update the current row with information from the meta table if the data is found
-            if len(update_row):
-                update_cursor.updateRow(meta_row)
 
     # return the path to the output data
     return out_fc
@@ -241,7 +262,7 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
 
     # use an update cursor to iterate the reaches
     with arcpy.da.UpdateCursor(
-            hydroline_feature_class, ('reach_id', 'nav_link_putin', 'nav_link_takeout')
+            hydroline_feature_class, (get_reach_id_field(hydroline_feature_class), 'nav_link_putin', 'nav_link_takeout')
     ) as update_cursor:
 
         # iterate the rows
@@ -249,7 +270,10 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
 
             # try to get the putin coordinates from the putin parking area
             xy_putin = [row[0] for row in arcpy.da.SearchCursor(
-                parking_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 0".format(update_row[0])
+                parking_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 0".format(
+                    get_reach_id_field(parking_feature_class),
+                    update_row[0]
+                )
             )][0]
 
             # if there is not a parking area
@@ -257,7 +281,10 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
 
                 # get the putin coordinates from the putin feature class
                 xy_putin = [row[0] for row in arcpy.da.SearchCursor(
-                    access_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 0".format(update_row[0])
+                    access_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 0".format(
+                        get_reach_id_field(access_feature_class),
+                        update_row[0]
+                    )
                 )][0]
 
             # modify the update cursor putin link with the navigation url
@@ -265,7 +292,10 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
 
             # try to get the takeout coordinates from the takeout parking area
             xy_takeout = [row[0] for row in arcpy.da.SearchCursor(
-                access_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 1".format(update_row[0])
+                access_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 1".format(
+                    get_reach_id_field(access_feature_class),
+                    update_row[0]
+                )
             )][0]
 
             # if there is not a parking area
@@ -273,7 +303,10 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
 
                 # get the takeout coordinates using the reach_id from the update cursor
                 xy_takeout = [row[0] for row in arcpy.da.SearchCursor(
-                    access_feature_class, 'SHAPE@XY', "reach_id = '{}' AND type = 1".format(update_row[0])
+                    access_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 1".format(
+                        get_reach_id_field(access_feature_class),
+                        update_row[0]
+                    )
                 )][0]
 
             # modify the update cursor takeout link with the navigation url
@@ -298,8 +331,11 @@ def add_link_to_american_whitewater_reach_page(table_with_reach_id):
         field_alias='AW Reach Page Link'
     )
 
+    # get the reach id field since the join can muck up field names
+    reach_id_field = [field.name for field in arcpy.ListFields(table_with_reach_id, '*reach_id*')][0]
+
     # use an update cursor to iterate the rows
-    with arcpy.da.UpdateCursor(table_with_reach_id, ('reach_id', 'nav_link_aw')) as update_cursor:
+    with arcpy.da.UpdateCursor(table_with_reach_id, (reach_id_field, 'nav_link_aw')) as update_cursor:
 
         # iterate the rows
         for row in update_cursor:
@@ -442,3 +478,6 @@ def create_publication_geodatabase(analysis_gdb, publication_gdb):
         os.path.join(analysis_gdb, 'reach_invalid'),
         os.path.join(out_gdb, 'reach_invalid_points')
     )
+
+    # return the path to the newly created publication geodatabase
+    return out_gdb

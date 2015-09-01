@@ -2,11 +2,12 @@
 from reach_processing import (
     get_reach_line_fc,
     get_new_hydrolines,
-    process_all_new_hydrolines,
-    create_invalid_points_feature_class
+    process_all_new_hydrolines
 )
 
-from publishing_tools import create_hydropoint_feature_class
+from publishing_tools import (
+    create_publication_geodatabase as create_publication_geodatabase
+)
 
 from nhd_data import (
     get_nhd_subregion,

@@ -263,16 +263,9 @@ class TestCaseJoinMetaToAccess(unittest.TestCase):
 
 class TestCasePublishTasks(unittest.TestCase):
 
-    # paths to data
-    access_fc = r'F:\reach-processing\aggregate\publish20150721.gdb\access'
-
-    def test_create_invalid_reach_feature_class(self):
-        invalid_table = r'F:\reach-processing\aggregate\data.gdb\reach_invalid'
-        invalid_feature_class = r'F:\reach-processing\aggregate\data.gdb\reach_invalid_points'
-        utilities.create_invalid_points_feature_class(access_fc, invalid_table, invalid_feature_class)
-        self.assertTrue(int(arcpy.GetCount_management(invalid_table)) == int(arcpy.GetCount_management(invalid_feature_class)))
-
-    def test_create_reach_centroids(self):
-        hydroline_fc = r'F:\reach-processing\aggregate\publish20150824.gdb\hydrolines'
-        hydro_centroid_fc = r'F:\reach-processing\aggregate\publish20150824.gdb\hydropoints'
-        utilities.publishing_tools.create_hydropoint_feature_class(hydroline_fc, hydro_centroid_fc)
+    def test_create_publication_geodatabase(self):
+        out_gdb = r'C:\Users\joel5174\Documents\ArcGIS\test_aw01.gdb'
+        if arcpy.Exists(out_gdb):
+            arcpy.Delete_management(out_gdb)
+        utilities.create_publication_geodatabase(r'F:\reach-processing\aggregate\data_v2.gdb', out_gdb)
+        self.assertTrue(arcpy.Exists(out_gdb))
