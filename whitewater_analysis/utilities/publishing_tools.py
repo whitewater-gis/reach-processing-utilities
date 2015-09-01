@@ -79,19 +79,25 @@ def add_fields_from_table(input_table, add_table):
     # get a list of fields from the table
     meta_field_list = [field for field in arcpy.ListFields(add_table) if field_valid(field)]
 
+    # get list of fields from input table
+    input_field_list = [field.name for field in arcpy.ListFields(input_table)]
+
     # iterate the fields and add the field
     for field in meta_field_list:
 
-        # add each field
-        arcpy.AddField_management(
-            in_table=input_table,
-            field_name=field.name,
-            field_type=field.type,
-            field_precision=field.precision,
-            field_scale=field.scale,
-            field_length=field.length,
-            field_alias=field.aliasName
-        )
+        # check to make sure the field does not already exist
+        if field.name not in input_field_list:
+
+            # add each field
+            arcpy.AddField_management(
+                in_table=input_table,
+                field_name=field.name,
+                field_type=field.type,
+                field_precision=field.precision,
+                field_scale=field.scale,
+                field_length=field.length,
+                field_alias=field.aliasName
+            )
 
     # return list of field objects added to the table
     return meta_field_list
@@ -188,40 +194,36 @@ def create_feature_class_with_meta(input_feature_class, meta_table, target_featu
     :param target_feature_class: Output feature class to be created with all information contained in it.
     :return: Path to the output feature class.
     """
-    # create a layer from the input feature class
-    in_lyr = arcpy.MakeFeatureLayer_management(input_feature_class, 'in_lyr')[0]
-
-    # create a fieldinfo object
-    field_info = arcpy.FieldInfo()
-
-    # iterate the fields in the join table
-    for field in arcpy.ListFields(meta_table):
-
-        # if the field is valid, make visible
-        if field_valid(field) or field.name == 'reach_id':
-            vis = 'VISIBLE'
-        else:
-            vis = 'HIDDEN'
-
-        # add the field to the field info object with the visibility
-        field_info.addField(field.name, field.name, vis, 'NONE')
-
-    # create a table view from the meta table
-    meta_vw = arcpy.MakeTableView_management(meta_table, 'meta_vw', field_info=field_info)[0]
-
-    # join the meta table to the input features
-    arcpy.AddJoin_management(
-        in_layer_or_view=in_lyr,
-        in_field='reach_id',
-        join_table=meta_vw,
-        join_field='reach_id'
-    )
 
     # copy the feature class to the output location
     out_fc = arcpy.CopyFeatures_management(
-        in_features=in_lyr,
+        in_features=input_feature_class,
         out_feature_class=target_feature_class
     )[0]
+
+    # add valid fields to feature class and get result
+    valid_field_list = add_fields_from_table(out_fc, meta_table)
+
+    # extract the field names in a list
+    meta_field_name_list = ['reach_id'] + [field.name for field in valid_field_list]
+
+    # create a dictionary of meta
+    meta_list = [row for row in arcpy.da.SearchCursor(meta_table, meta_field_name_list)]
+
+    # use update cursor to populate meta values
+    with arcpy.da.UpdateCursor(out_fc, meta_field_name_list) as update_cursor:
+
+        # iterate the rows
+        for row in update_cursor:
+
+            # find the right reach meta using the reach id field in the row
+            meta_row = [item for item in meta_list if item[0] == row[0]]
+
+            # if something found
+            if len(meta_row):
+
+                # update the row using the meta values
+                update_cursor.updateRow(meta_row[0])
 
     # return the path to the output data
     return out_fc
@@ -233,7 +235,7 @@ def get_navigation_link(xy_tuple):
     :param xy_tuple: Tuple of (x,y) coordinates.
     :return: String url to be used for navigation.
     """
-    return 'http://maps.google.com/maps?daddr={},{}&saddr=Current%20Location'.format(xy_tuple[0], xy_tuple[1])
+    return 'http://maps.google.com/maps?daddr={},{}&saddr=Current%20Location'.format(xy_tuple[1], xy_tuple[0])
 
 
 def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_class, parking_feature_class):
@@ -260,6 +262,12 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
         field_alias='Take Out Navigation Link'
     )
 
+    # create list for parking and access putin and takeout coordinates
+    park_putin_list = [row for row in arcpy.da.SearchCursor(parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
+    park_takeout_list = [row for row in arcpy.da.SearchCursor(parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
+    access_putin_list = [row for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
+    access_takeout_list = [row for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
+
     # use an update cursor to iterate the reaches
     with arcpy.da.UpdateCursor(
             hydroline_feature_class, (get_reach_id_field(hydroline_feature_class), 'nav_link_putin', 'nav_link_takeout')
@@ -269,45 +277,33 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
         for update_row in update_cursor:
 
             # try to get the putin coordinates from the putin parking area
-            xy_putin = [row[0] for row in arcpy.da.SearchCursor(
-                parking_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 0".format(
-                    get_reach_id_field(parking_feature_class),
-                    update_row[0]
-                )
-            )][0]
+            putin = [loc[1] for loc in park_putin_list if loc[0] == update_row[0]]
+
+            # if anything is found in the parking feature class, save it
+            if len(putin):
+                xy_putin = putin[0]
 
             # if there is not a parking area
-            if not xy_putin:
+            else:
 
                 # get the putin coordinates from the putin feature class
-                xy_putin = [row[0] for row in arcpy.da.SearchCursor(
-                    access_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 0".format(
-                        get_reach_id_field(access_feature_class),
-                        update_row[0]
-                    )
-                )][0]
+                xy_putin = [loc[1] for loc in access_putin_list if loc[0] == update_row[0]][0]
 
             # modify the update cursor putin link with the navigation url
             update_row[1] = get_navigation_link(xy_putin)
 
             # try to get the takeout coordinates from the takeout parking area
-            xy_takeout = [row[0] for row in arcpy.da.SearchCursor(
-                access_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 1".format(
-                    get_reach_id_field(access_feature_class),
-                    update_row[0]
-                )
-            )][0]
+            takeout = [loc[1] for loc in park_takeout_list if loc[0] == update_row[0]]
+
+            # if a takeout parking area is found
+            if len(takeout):
+                xy_takeout = takeout[0]
 
             # if there is not a parking area
-            if not xy_takeout:
+            else:
 
                 # get the takeout coordinates using the reach_id from the update cursor
-                xy_takeout = [row[0] for row in arcpy.da.SearchCursor(
-                    access_feature_class, 'SHAPE@XY', "{} = '{}' AND type = 1".format(
-                        get_reach_id_field(access_feature_class),
-                        update_row[0]
-                    )
-                )][0]
+                xy_takeout = [loc[1] for loc in access_takeout_list if loc[0] == update_row[0]][0]
 
             # modify the update cursor takeout link with the navigation url
             update_row[2] = get_navigation_link(xy_takeout)
@@ -355,8 +351,8 @@ def create_invalid_points_feature_class(access_feature_class, invalid_reach_tabl
     :return: Path to invalid points feature class.
     """
     # create tuple pairs of putin and takeout reach ids and geometries
-    putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('putin', 'SHAPE@XY'), "putin IS NOT NULL AND putin <> '0'")]
-    takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('takeout', 'SHAPE@XY'), "takeout IS NOT NULL AND takeout <> '0'")]
+    putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type == 0")]
+    takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type == 1")]
 
     # create a list of invalid reach id's and invalid reasons
     invalid_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(invalid_reach_table, ('reach_id', 'reason'))]
