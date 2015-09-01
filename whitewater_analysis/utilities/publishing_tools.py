@@ -462,6 +462,29 @@ def create_publication_geodatabase(analysis_gdb, publication_gdb):
         os.path.join(out_gdb, 'parking')
     )
 
+    # add combined search field for rivers and sections combined
+    arcpy.AddField_management(
+        in_table=os.path.join(out_gdb, 'hydroline'),
+        field_name='search_river_section',
+        field_type='TEXT',
+        field_length=300,
+        field_alias='Search River & Section'
+    )
+
+    # use an update cursor to combine the river name and river section for searching in the web map
+    with arcpy.da.UpdateCursor(
+            os.path.join(out_gdb, 'hydroline'),
+            ('name_river', 'name_section', 'search_river_section')
+    ) as update_cursor:
+
+        for row in update_cursor:
+
+            # concatenate the name and section together in one field
+            row[2] = row[0] + " " + row[1]
+
+            # commit the changes
+            update_cursor.updateRow(row)
+
     # create hydropoints feature class
     create_hydropoint_feature_class(
         os.path.join(out_gdb, 'hydroline'),
