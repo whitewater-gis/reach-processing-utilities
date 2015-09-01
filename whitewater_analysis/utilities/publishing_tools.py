@@ -477,12 +477,22 @@ def create_publication_geodatabase(analysis_gdb, publication_gdb):
             ('name_river', 'name_section', 'search_river_section')
     ) as update_cursor:
 
+        # for every row in the hydroline feature class
         for row in update_cursor:
 
-            # concatenate the name and section together in one field
-            row[2] = row[0] + " " + row[1]
+            # if there is both a river name and a section
+            if row[0] and row[1]:
 
-            # commit the changes
+                # concatenate the name and section together in one field
+                row[2] = row[0] + " " + row[1]
+
+            # if just the river is there
+            elif row[0]:
+
+                # just use the river name
+                row[2] = row[0]
+
+            # commit the changes with whatever we got
             update_cursor.updateRow(row)
 
     # create hydropoints feature class
