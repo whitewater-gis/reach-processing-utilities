@@ -351,8 +351,8 @@ def create_invalid_points_feature_class(access_feature_class, invalid_reach_tabl
     :return: Path to invalid points feature class.
     """
     # create tuple pairs of putin and takeout reach ids and geometries
-    putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type == 0")]
-    takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type == 1")]
+    putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
+    takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
 
     # create a list of invalid reach id's and invalid reasons
     invalid_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(invalid_reach_table, ('reach_id', 'reason'))]
