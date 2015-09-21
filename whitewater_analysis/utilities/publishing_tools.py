@@ -484,7 +484,7 @@ def create_publication_geodatabase(analysis_gdb, publication_gdb):
             if row[0] and row[1]:
 
                 # concatenate the name and section together in one field
-                row[2] = row[0] + " " + row[1]
+                row[2] = row[0] + ": " + row[1]
 
             # if just the river is there
             elif row[0]:

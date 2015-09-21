@@ -33,9 +33,9 @@ import utilities.publishing_tools
 
 
 # variables
-access_fc = r'D:\dev\reach-processing-tools\resources\data-aw.gdb\access_master'
+access_fc = r'F:\reach-processing\aggregate\data_v2.gdb\access'
 hydro_net = r'F:\reach-processing\subregions\1711.gdb\Hydrography\HYDRO_NET'
-huc4 = r'D:\dev\reach-processing-tools\resources\WBD.gdb\WBD\WBDHU4'
+huc4 = r'F:\reach-processing\aggregate\data_v2.gdb\WBDHU4'
 test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
 
@@ -156,7 +156,6 @@ class TestCaseSingleReach2171(unittest.TestCase):
         )
 
 
-
 class TestCaseSingleReach2172(unittest.TestCase):
 
     # single reach id causing problems
@@ -212,29 +211,26 @@ class TestCaseSingleReach2172(unittest.TestCase):
 class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
 
     # reach id list of all reaches on Olympic Peninsula
-    reach_id_list = [u'00002065', u'00002098', u'00002119', u'00002131', u'00002163', u'00002182', u'00002204']
-                     # u'00002215', u'00002227', u'00002236', u'00002275', u'00003148', u'00003317', u'00003343',
-                     # u'00003353', u'00003578', u'00002071', u'00003305', u'00002108', u'00002134', u'00002161',
-                     # u'00002191', u'00002197', u'00002207', u'00002230', u'00002258', u'00002067', u'00002070',
-                     # u'00002072', u'00002088', u'00002096', u'00002097', u'00002104', u'00002106', u'00002107',
-                     # u'00002109', u'00002110', u'00002111', u'00002112', u'00002113', u'00002121', u'00002126',
-                     # u'00002127', u'00002129', u'00002130', u'00002132', u'00002133', u'00002135', u'00002158',
-                     # u'00002183', u'00002192', u'00002193', u'00002194', u'00002195', u'00002196', u'00002208',
-                     # u'00002225', u'00002226', u'00002228', u'00002229', u'00002231', u'00002232', u'00003288',
-                     # u'00003315', u'00003316', u'00003319', u'00003354', u'00004214', u'00004373']
+    reach_id_list = [u'00002065', u'00002098', u'00002119', u'00002131', u'00002163', u'00002182', u'00002204',
+                     u'00002215', u'00002227', u'00002236', u'00002275', u'00003148', u'00003317', u'00003343',
+                     u'00003353', u'00003578', u'00002071', u'00003305', u'00002108', u'00002134', u'00002161',
+                     u'00002191', u'00002197', u'00002207', u'00002230', u'00002258', u'00002067', u'00002070',
+                     u'00002072', u'00002088', u'00002096', u'00002097', u'00002104', u'00002106', u'00002107',
+                     u'00002109', u'00002110', u'00002111', u'00002112', u'00002113', u'00002121', u'00002126',
+                     u'00002127', u'00002129', u'00002130', u'00002132', u'00002133', u'00002135', u'00002158',
+                     u'00002183', u'00002192', u'00002193', u'00002194', u'00002195', u'00002196', u'00002208',
+                     u'00002225', u'00002226', u'00002228', u'00002229', u'00002231', u'00002232', u'00003288',
+                     u'00003315', u'00003316', u'00003319', u'00003354', u'00004214', u'00004373']
 
     def test_get_reach_line_fc(self):
 
-        scratch_gdb = r'D:\dev\reach-processing-tools\resources\scratch\data_scratch.gdb'
+        scratch_gdb = arcpy.env.scratchGDB
         reach_hydroline = os.path.join(scratch_gdb, 'reach_test')
         reach_invalid_out = os.path.join(scratch_gdb, 'reach_test_invalid')
 
-        # create query string for all accesses
-        def get_query_snippet(reach_id):
-            return "putin = '{}' OR takeout = '{}'".format(reach_id, reach_id)
-
         # collapse query list into single query string
-        query = ' OR '.join(itertools.imap(get_query_snippet, self.reach_id_list))
+        query_list = ["reach_id = '{}'".format(int(reach_id)) for reach_id in self.reach_id_list]
+        query = ' OR '.join(query_list)
 
         # get features in temporary features class
         access_fc_temp = arcpy.Select_analysis(access_fc, 'in_memory/access_subset', query)

@@ -48,11 +48,11 @@ def _validate_has_putin_and_takeout(reach_id, access_fc):
     # rather than duplicating code, just use this embedded function
     def get_access_count(layer, access_type, reach_id):
 
-        # create the sql string taking into account the location of the data
-        sql = "{} = '{}'".format(arcpy.AddFieldDelimiters(path, access_type), reach_id)
-
         # select features from the layer
-        arcpy.SelectLayerByAttribute_management(in_layer_or_view=layer, where_clause=sql)
+        arcpy.SelectLayerByAttribute_management(
+            in_layer_or_view=layer,
+            where_clause="reach_id = '{}' AND type={}".format(reach_id, access_type)
+        )
 
         # get the count of selected features in the layer
         return int(arcpy.GetCount_management(layer)[0])
@@ -105,13 +105,8 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
     # create an access layer
     access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'putin_takeout_coincidence')
 
-    # add field delimters for sql
-    sql_pi = arcpy.AddFieldDelimiters(fds_path, 'putin')
-    sql_to = arcpy.AddFieldDelimiters(fds_path, 'takeout')
-
     # select the putin and takeout for the reach layer
-    arcpy.SelectLayerByAttribute_management(access_lyr, 'NEW_SELECTION',
-                                            "{} = '{}' OR {} = '{}'".format(sql_pi, reach_id, sql_to, reach_id))
+    arcpy.SelectLayerByAttribute_management(access_lyr, 'NEW_SELECTION', "reach_id = '{}'".format(reach_id))
 
     # snap the putin and takeout to the hydrolines
     arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
@@ -140,8 +135,8 @@ def _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
                       upstream from the takeout.
     """
     # get geometry object for putin and takeout
-    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "takeout='{}'".format(reach_id))[0]
-    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "putin='{}'".format(reach_id))[0]
+    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "reach_id='{}' AND type='takeout'".format(reach_id))[0]
+    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "reach_id='{}' AND type='putin'".format(reach_id))[0]
 
     # trace upstream from the takeout
     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', takeout_geometry,

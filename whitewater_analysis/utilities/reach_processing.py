@@ -109,8 +109,10 @@ def process_reach(reach_id, access_fc, hydro_network):
     try:
 
         # get putin and takeout geometry
-        takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "takeout='{}'".format(reach_id))[0]
-        putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),  "putin='{}'".format(reach_id))[0]
+        takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),
+                                                 "reach_id='{}' AND type='takeout'".format(reach_id))[0]
+        putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(),
+                                               "reach_id='{}' AND type='putin'".format(reach_id))[0]
 
         # trace network connecting the putin and the takeout, this returns all intersecting line segments
         group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
@@ -169,8 +171,8 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     :return:
     """
     # get list of reach id's from the takeouts not including the NULL or zero values
-    reach_id_list = [row[0] for row in arcpy.da.SearchCursor(access_fc,
-                                                         'takeout', "takeout IS NOT NULL AND takeout <> '0'")]
+    reach_id_list = set(row[0] for row in arcpy.da.SearchCursor(access_fc, 'reach_id',
+                                                                "reach_id IS NOT NULL AND reach_id <> '0'"))
 
     # give a little beta to the front end
     arcpy.AddMessage('{} reach id accesses successfully located'.format(len(reach_id_list)))
@@ -242,18 +244,16 @@ def get_new_hydrolines(access_fc, hydro_network, reach_hydroline_fc, reach_inval
     hydroline_reach_id_list = set(row[0] for row in arcpy.da.SearchCursor(reach_hydroline_fc, 'reach_id'))
 
     # get a list of all unique permutations of reach ids in the access feature class
-    putin_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(access_fc, 'putin')]
-    takeout_reach_id_list = [row[0] for row in arcpy.da.SearchCursor(access_fc, 'takeout')]
-    access_reach_id_list = set(putin_reach_id_list + takeout_reach_id_list)
+    access_reach_id_list = set(row[0] for row in arcpy.da.SearchCursor(access_fc, 'reach_id'))
 
     # get list of reach ids not in the hydroline feature class, those we need to process
     reach_id_queue = [reach_id for reach_id in access_reach_id_list if reach_id not in hydroline_reach_id_list]
 
     # where clause to select all putins and takeouts in the reach id queue
-    where_list = ["putin = '{}' OR takeout = '{}'".format(reach_id, reach_id) for reach_id in reach_id_queue]
+    where_list = ["reach_id='{}'".format(reach_id) for reach_id in reach_id_queue]
     where_string = ' OR '.join(where_list)
 
-    # create an access feature layer using monster where clause
+    # create an access feature layer using where clause to identify and only try to process the invalid reaches
     access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'access_lyr', where_string)[0]
 
     # now, with only the unprocessed reaches selected, stand back and let the big dog eat
@@ -295,12 +295,15 @@ def revise_invalid_table(reach_hydroline_feature_class, reach_invalid_table):
 def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature_class, reach_hydroline_fc,
                                reach_invalid_tbl):
     """
-    :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
-                  takeout. These fields must store the reach id for the point role as a putin or takeout.
-    :param huc4_subregion_directory: Directory where downloaded file geodatabases reside for
-    :param huc4_feature_class: Polygon feature class delineating HUC4 regions.
-    :param reach_hydroline_fc: Hydroline feature class where hydrolines will be written to.
-    :param reach_invalid_tbl: Table where invalid features will be written to.
+    :param access_fc: The point feature class for accesses. This point feature class must contain two fields, reach_id
+        and type. The reach_id field uniquely identifies each reach the access is associated with and the type
+        designates the access type; putin, takeout or intermediate. The input accesses do not need to be already
+        selected. Only reaches without a
+    :param huc4_subregion_directory: Directory where downloaded file USGS HUC subregion geodatabases reside.
+    :param huc4_feature_class: Polygon feature class delineating HUC4 regions. This is used to iterate and look up
+        the correct subregion to process.
+    :param reach_hydroline_fc: Hydroline feature class where processed reach hydrolines will be written to.
+    :param reach_invalid_tbl: Table where invalid features will be logged.
     :return:
     """
     # iterate huc4 feature class and create list of hash's with huc4 and geometry
@@ -327,8 +330,9 @@ def process_all_new_hydrolines(access_fc, huc4_subregion_directory, huc4_feature
             # using the selected accesses, use the correct subregion geometric network to extract hydrolines
             get_new_hydrolines(
                 access_fc=access_layer,
-                hydro_network=os.path.join(huc4_subregion_directory, '{}.gdb'.format(huc4_dict['huc4']), 'HYDROGRAPHY',
-                                           'HYDRO_NET'),
+                hydro_network=os.path.join(
+                    huc4_subregion_directory, '{}.gdb'.format(huc4_dict['huc4']), 'HYDROGRAPHY', 'HYDRO_NET'
+                ),
                 reach_hydroline_fc=reach_hydroline_fc,
                 reach_invalid_tbl=reach_invalid_tbl
             )
