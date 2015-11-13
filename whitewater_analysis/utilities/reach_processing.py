@@ -175,7 +175,62 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
                                                                 "reach_id IS NOT NULL AND reach_id <> '0'"))
 
     # give a little beta to the front end
-    arcpy.AddMessage('{} reach id accesses successfully located'.format(len(reach_id_list)))
+    arcpy.AddMessage('{} reaches queued for processing.'.format(len(reach_id_list)))
+
+    # location to write tempary results to
+    temp_gdb = arcpy.env.scratchGDB
+
+    # location where temporary tables will be stored
+    temp_hydroline = os.path.join(temp_gdb, 'temp_hydroline')
+    temp_invalid = os.path.join(temp_gdb, 'temp_invalid')
+
+    # ensure the scratch workspace is clean
+    for fc in [temp_hydroline, temp_invalid]:
+        if arcpy.Exists(fc):
+            arcpy.Delete_management(os.path.join(temp_gdb, 'temp_hydroline'))
+
+    # create the temporary hydroline and invalid tables
+    create_hydroline_feature_class(temp_hydroline, arcpy.Describe(access_fc).spatialReference)
+    create_invalid_table(temp_invalid)
+
+    # progress tracker
+    valid_count = 0
+
+    # create edit object in hydroline temporary workspace
+    with arcpy.da.Editor(temp_gdb) as edit:
+
+        # create an insert cursor for the reach feature class
+        with arcpy.da.InsertCursor(temp_hydroline, ('reach_id', 'manual_digitize', 'SHAPE@')) as reach_cursor:
+
+            # create an insert cursor for the invalid table
+            with arcpy.da.InsertCursor(temp_invalid, ('reach_id', 'reason')) as invalid_cursor:
+
+                # for every reach
+                for reach_id in reach_id_list:
+
+                    # check to see if the reach is manually digitized, and if it has been, leave it alone
+                    if not check_if_hydroline_manually_digitized(reach_hydroline_fc, reach_id):
+
+                        # process the current reach
+                        reach = process_reach(reach_id, access_fc, hydro_network)
+
+                        # if the reach is valid
+                        if reach['valid']:
+
+                            # iterate the geometry objects in the list
+                            for geometry in reach['geometry_list']:
+
+                                # insert a record in the feature class for the geometry
+                                reach_cursor.insertRow((reach['reach_id'], 0, geometry))
+
+                            # increment the valid counter
+                            valid_count += 1
+
+                        # if the reach is not valid
+                        elif not reach['valid']:
+
+                            # insert a record in the feature class for the geometry
+                            invalid_cursor.insertRow((str(reach['reach_id']), reach['reason']))
 
     # if the output hydroline feature class does not already exist, create it
     if not arcpy.Exists(reach_hydroline_fc):
@@ -185,48 +240,14 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     if not arcpy.Exists(reach_invalid_tbl):
         create_invalid_table(reach_invalid_tbl)
 
-    # progress tracker
-    valid_count = 0
-
     # create edit object in hydroline workspace
     with arcpy.da.Editor(os.path.dirname(reach_hydroline_fc)) as edit:
 
-        # create an insert cursor for the reach feature class
-        reach_cursor = arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@'))
+        # append the temporary reaches to the final output reach feature class
+        arcpy.Append_management(temp_hydroline, reach_hydroline_fc)
 
-        # create an insert cursor for the invalid table
-        invalid_cursor = arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason'))
-
-        # for every reach
-        for reach_id in reach_id_list:
-
-            # check to see if the reach is manually digitized, and if it has been, leave it alone
-            if not check_if_hydroline_manually_digitized(reach_hydroline_fc, reach_id):
-
-                # process the current reach
-                reach = process_reach(reach_id, access_fc, hydro_network)
-
-                # if the reach is valid
-                if reach['valid']:
-
-                    # iterate the geometry objects in the list
-                    for geometry in reach['geometry_list']:
-
-                        # insert a record in the feature class for the geometry
-                        reach_cursor.insertRow((reach['reach_id'], 0, geometry))
-
-                    # increment the valid counter
-                    valid_count += 1
-
-                # if the reach is not valid
-                elif not reach['valid']:
-
-                    # insert a record in the feature class for the geometry
-                    invalid_cursor.insertRow((str(reach['reach_id']), reach['reason']))
-
-        # delete the cursors
-        del reach_cursor
-        del invalid_cursor
+        # append the invalid reaches to the final output invalid table
+        arcpy.Append_management(temp_invalid, reach_invalid_tbl)
 
     # at the very end, report the success rate...or if nothing found...report this as well
     if valid_count:
