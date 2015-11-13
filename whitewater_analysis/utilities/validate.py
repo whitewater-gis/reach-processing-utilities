@@ -37,37 +37,32 @@ def _validate_has_putin_and_takeout(reach_id, access_fc):
     :return: boolean: Indicates if the specified AW id has a single point for the putin and takeout.
     """
     # get the path to the accesses feature class
-    path = arcpy.Describe(access_fc).path
+    data_source = arcpy.Describe(access_fc).path
 
     # overwrite outputs
     arcpy.env.overwriteOutput = True
 
+    # add correct field delimeters to build selection string
+    where_clause = "{} = '{}' AND ({} = '{}' OR {} = '{}')".format(
+        arcpy.AddFieldDelimiters(data_source, 'reach_id'),
+        reach_id,
+        arcpy.AddFieldDelimiters(data_source, 'type'),
+        'putin',
+        arcpy.AddFieldDelimiters(data_source, 'type'),
+        'takeout'
+    )
+
     # make a feature layer for accesses
-    putin_takeout_layer = arcpy.MakeFeatureLayer_management(access_fc, 'access_validatae')
+    putin_takeout_layer = arcpy.MakeFeatureLayer_management(access_fc, 'access_validate', where_clause)
 
-    # rather than duplicating code, just use this embedded function
-    def get_access_count(layer, access_type, reach_id):
-
-        # select features from the layer
-        arcpy.SelectLayerByAttribute_management(
-            in_layer_or_view=layer,
-            where_clause="reach_id = '{}' AND type={}".format(reach_id, access_type)
-        )
-
-        # get the count of selected features in the layer
-        return int(arcpy.GetCount_management(layer)[0])
-
-    # try to get a putin
-    putin_count = get_access_count(putin_takeout_layer, 'putin', reach_id)
-
-    # try to get a takeout
-    takeout_count = get_access_count(putin_takeout_layer, 'takeout', reach_id)
+    # get the features count in the layer
+    select_count = int(arcpy.GetCount_management(putin_takeout_layer)[0])
 
     # clean up the layer
     del putin_takeout_layer
 
     # if a putin and takeout are found
-    if putin_count == 1 and takeout_count == 1:
+    if select_count == 2:
 
         # return success
         return True
@@ -102,17 +97,20 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
         out_layer='hydroline_lyr'
     )
 
+    # get the path to the accesses feature class
+    data_source = arcpy.Describe(access_fc).path
+
     # create an access layer
-    access_lyr = arcpy.MakeFeatureLayer_management(access_fc, 'putin_takeout_coincidence')
+    access_lyr = arcpy.MakeFeatureLayer_management(
+        access_fc, 'putin_takeout_coincidence',
+        where_clause="{} = '{}'".format(arcpy.AddFieldDelimiters(data_source, 'reach_id'), reach_id)
+    )[0]
 
-    # select the putin and takeout for the reach layer
-    arcpy.SelectLayerByAttribute_management(access_lyr, 'NEW_SELECTION', "reach_id = '{}'".format(reach_id))
-
-    # snap the putin and takeout to the hydrolines
+    # snap the putin and takeout to the hydrolines - this does not affect the permanent dataset, only this analysis
     arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
 
     # select by location, selecting accesses coincident with the hydrolines
-    arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='SUBSET_SELECTION')
+    arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='SUBSET_SELECTION')[0]
 
     # if successful, two access features should be selected, the put in and the takeout
     if int(arcpy.GetCount_management(access_lyr)[0]) == 2:
@@ -134,9 +132,21 @@ def _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
     :return: boolean: Indicates if when tracing the geometric network upstream from the takeout, if the putin is
                       upstream from the takeout.
     """
+    # get the path to the accesses feature class
+    data_source = arcpy.Describe(access_fc).path
+
+    # create selection sql
+    def get_where(access_type):
+        return "{}='{}' AND {}='{}'".format(
+            arcpy.AddFieldDelimiters(data_source, 'reach_id'),
+            reach_id,
+            arcpy.AddFieldDelimiters(data_source, 'type'),
+            access_type
+        )
+
     # get geometry object for putin and takeout
-    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "reach_id='{}' AND type='takeout'".format(reach_id))[0]
-    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), "reach_id='{}' AND type='putin'".format(reach_id))[0]
+    takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), get_where('takeout'))[0]
+    putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), get_where('putin'))[0]
 
     # trace upstream from the takeout
     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', takeout_geometry,
@@ -153,6 +163,7 @@ def _validate_putin_upstream_from_takeout(reach_id, access_fc, hydro_network):
 
         # test if the putin is coincident with the hydroline geometry segment
         if putin_geometry.within(hydroline_geometry):
+
             # if coincident, return the upstream traced hydroline layer...exiting function
             return True
 

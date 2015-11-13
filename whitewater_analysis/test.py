@@ -244,6 +244,46 @@ class TestCaseMultipleOlympicPeninsula(unittest.TestCase):
 
         # check to make sure 69 records were processed
         self.assertEqual(total_processed, 69)
+        
+        
+class TestCaseMultipleOlympicPeninsula_SDE(unittest.TestCase):
+
+    # reach id list of all reaches on Olympic Peninsula
+    reach_id_list = [u'00002065', u'00002098', u'00002119', u'00002131', u'00002163', u'00002182', u'00002204',
+                     u'00002215', u'00002227', u'00002236', u'00002275', u'00003148', u'00003317', u'00003343',
+                     u'00003353', u'00003578', u'00002071', u'00003305', u'00002108', u'00002134', u'00002161',
+                     u'00002191', u'00002197', u'00002207', u'00002230', u'00002258', u'00002067', u'00002070',
+                     u'00002072', u'00002088', u'00002096', u'00002097', u'00002104', u'00002106', u'00002107',
+                     u'00002109', u'00002110', u'00002111', u'00002112', u'00002113', u'00002121', u'00002126',
+                     u'00002127', u'00002129', u'00002130', u'00002132', u'00002133', u'00002135', u'00002158',
+                     u'00002183', u'00002192', u'00002193', u'00002194', u'00002195', u'00002196', u'00002208',
+                     u'00002225', u'00002226', u'00002228', u'00002229', u'00002231', u'00002232', u'00003288',
+                     u'00003315', u'00003316', u'00003319', u'00003354', u'00004214', u'00004373']
+
+    def test_get_reach_line_fc(self):
+
+        sde = r'C:\Users\joel5174\AppData\Roaming\ESRI\Desktop10.3\ArcCatalog\whitewater (owner.20150920kc).sde'
+        access_fc_sde = os.path.join(sde, 'whitewater.owner.access')
+        reach_hydroline_sde = os.path.join(sde, 'whitewater.owner.hydroline')
+        reach_invalid_sde = os.path.join(sde, 'whitewater.owner.reach_invalid')
+        hydro_net = r'F:\reach-processing\subregions\1710.gdb\Hydrography\HYDRO_NET'
+
+        # collapse query list into single query string
+        query_list = ["reach_id = '{}'".format(int(reach_id)) for reach_id in self.reach_id_list]
+        query = ' OR '.join(query_list)
+
+        # get features in temporary features class
+        access_fc_temp = arcpy.Select_analysis(access_fc_sde, 'in_memory/access_subset', query)
+
+        # run the analysis
+        utilities.reach_processing.get_reach_line_fc(access_fc_temp, hydro_net, reach_hydroline_sde, reach_invalid_sde)
+
+        # combine the output record length of valid and invalid, it should be 69
+        total_processed = (int(arcpy.GetCount_management(reach_hydroline_sde)[0]) +
+                           int(arcpy.GetCount_management(reach_invalid_sde)[0]))
+
+        # check to make sure 69 records were processed
+        self.assertEqual(total_processed, 69)
 
 
 class TestCaseJoinMetaToAccess(unittest.TestCase):

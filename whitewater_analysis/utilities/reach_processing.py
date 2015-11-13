@@ -188,38 +188,45 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     # progress tracker
     valid_count = 0
 
-    # for every reach
-    for reach_id in reach_id_list:
+    # create edit object in hydroline workspace
+    with arcpy.da.Editor(os.path.dirname(reach_hydroline_fc)) as edit:
 
-        # check to see if the reach is manually digitized, and if it has been, leave it alone
-        if not check_if_hydroline_manually_digitized(reach_hydroline_fc, reach_id):
+        # create an insert cursor for the reach feature class
+        reach_cursor = arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@'))
 
-            # process the current reach
-            reach = process_reach(reach_id, access_fc, hydro_network)
+        # create an insert cursor for the invalid table
+        invalid_cursor = arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason'))
 
-            # if the reach is valid
-            if reach['valid']:
+        # for every reach
+        for reach_id in reach_id_list:
 
-                # create an insert cursor
-                with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@')) as cursor:
+            # check to see if the reach is manually digitized, and if it has been, leave it alone
+            if not check_if_hydroline_manually_digitized(reach_hydroline_fc, reach_id):
+
+                # process the current reach
+                reach = process_reach(reach_id, access_fc, hydro_network)
+
+                # if the reach is valid
+                if reach['valid']:
 
                     # iterate the geometry objects in the list
                     for geometry in reach['geometry_list']:
 
                         # insert a record in the feature class for the geometry
-                        cursor.insertRow((reach['reach_id'], 0, geometry))
+                        reach_cursor.insertRow((reach['reach_id'], 0, geometry))
 
-                # increment the valid counter
-                valid_count += 1
+                    # increment the valid counter
+                    valid_count += 1
 
-            # if the reach is not valid
-            elif not reach['valid']:
-
-                # create an insert cursor
-                with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason')) as cursor_invalid:
+                # if the reach is not valid
+                elif not reach['valid']:
 
                     # insert a record in the feature class for the geometry
-                    cursor_invalid.insertRow((str(reach['reach_id']), reach['reason']))
+                    invalid_cursor.insertRow((str(reach['reach_id']), reach['reason']))
+
+        # delete the cursors
+        del reach_cursor
+        del invalid_cursor
 
     # at the very end, report the success rate...or if nothing found...report this as well
     if valid_count:
