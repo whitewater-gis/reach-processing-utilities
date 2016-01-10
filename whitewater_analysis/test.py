@@ -29,6 +29,7 @@ import utilities.nhd_data
 import utilities.validate
 import utilities.reach_processing
 import utilities.publishing_tools
+import utilities.watershed as watershed
 
 # variables
 access_fc = r'F:\reach-processing\aggregate\data_v2.gdb\access'
@@ -295,3 +296,27 @@ class TestCasePublishTasks(unittest.TestCase):
             arcpy.Delete_management(out_gdb)
         utilities.create_publication_geodatabase(r'F:\reach-processing\aggregate\data_v2.gdb', out_gdb)
         self.assertTrue(arcpy.Exists(out_gdb))
+
+
+class TestCaseGetWatershed(unittest.TestCase):
+    def test_get_watershed(self):
+        sde = r'C:\Users\joel5174\AppData\Roaming\ESRI\Desktop10.3\ArcCatalog\whitewater (owner.20150920kc).sde'
+        access_fc_sde = os.path.join(sde, 'whitewater.owner.access')
+        sql = "type = 'putin' AND reach_id = '2191'"
+        access_layer = arcpy.MakeFeatureLayer_management(access_fc_sde, 'single_putin', sql)
+        watershed_list = watershed.get_watershed(access_layer)
+        self.assertTrue(len(watershed_list))
+
+    def test_get_watersheds(self):
+        sde = r'C:\Users\joel5174\AppData\Roaming\ESRI\Desktop10.3\ArcCatalog\whitewater (owner.20150920kc).sde'
+        hydroline_fc = os.path.join(sde, 'whitewater.owner.hydroline')
+        access_fc = os.path.join(sde, 'whitewater.owner.access')
+        watershed_fc = os.path.join(sde, 'whitewater.owner.watershed')
+        start_hydroshed_count = int(arcpy.GetCount_management(hydroline_fc)[0])
+        sql_root = arcpy.AddFieldDelimiters(sde, 'reach_id')
+        hydroline_layer = arcpy.MakeFeatureLayer_management(hydroline_fc, "watershed_hydrology_layer",
+                                                         "{} = '2131' OR {} = '3343'".format(sql_root, sql_root))
+        watershed_output = watershed.get_watersheds(hydroline_layer, access_fc, watershed_fc)
+        end_hydroshed_count = int(arcpy.GetCount_management(hydroline_fc)[0])
+        hydroshed_count = end_hydroshed_count - start_hydroshed_count
+        self.assertEqual(2, hydroshed_count)
