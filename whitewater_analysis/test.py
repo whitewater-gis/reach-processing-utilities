@@ -26,73 +26,62 @@ import unittest
 import arcpy
 # import local modules
 import utilities.nhd_data
-import utilities.validate
+import utilities.validate as validate
 import utilities.reach_processing
 import utilities.publishing_tools
 import utilities.watershed as watershed
 
 # variables
-access_fc = r'F:\reach-processing\aggregate\data_v2.gdb\access'
-hydro_net = r'F:\reach-processing\subregions\1711.gdb\Hydrography\HYDRO_NET'
-huc4 = r'F:\reach-processing\aggregate\data_v2.gdb\WBDHU4'
+access_fc = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access'
+hydro_net = r'D:\dev\reach-processing-tools\test_data\1711.gdb\Hydrography\HYDRO_NET'
+huc4 = r'H:\reach-processing\aggregate\data_v3.gdb\WBDHU4'
 test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
 
 
-class TestCaseDownloadSmallest(unittest.TestCase):
-    def test_download_from_usgs(self):
-        subregion_huc4 = '2003'
-        output_directory = r'D:\dev\reach-processing-tools\resources\scratch'
+class TestCaseValidation(unittest.TestCase):
+    """
+    Test validation functions with data created to break in the right ways.
+    """
+    access_validate = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_validate_test'
 
-        fgdb = utilities.nhd_data._get_nhd_subregion(subregion_huc4, output_directory)
+    def test_validate_has_putin_and_takeout_false(self):
+        result = validate._validate_has_putin_and_takeout(1, self.access_validate)
+        self.assertFalse(result)
 
-        self.assertTrue(arcpy.Exists(fgdb))
+    def test_validate_has_putin_and_takeout_true(self):
+        result = validate._validate_has_putin_and_takeout(4, self.access_validate)
+        self.assertTrue(result)
 
+    def test_validate_reach_invalid_has_putin_and_takeout(self):
+        result = validate.validate_reach(1, self.access_validate, hydro_net)
+        self.assertFalse(result['valid'])
 
-class TestCaseSingleReach2170(unittest.TestCase):
-    # single reach id causing problems
-    single_reach_id = '2170'
+    def test_validate_putin_takeout_coincidence_false(self):
+        result = validate._validate_putin_takeout_conicidence(2, self.access_validate, hydro_net)
+        self.assertFalse(result)
 
-    def test_reach_has_putin_and_takeout(self):
+    def test_validate_putin_takeout_coincidence_true(self):
+        result = validate._validate_putin_takeout_conicidence(4, self.access_validate, hydro_net)
+        self.assertTrue(result)
 
-        status = utilities.validate._validate_has_putin_and_takeout(
-            reach_id=self.single_reach_id,
-            access_fc=access_fc
-        )
-        self.assertTrue(
-            status,
-            'Reach id {} does not appears to have a putin and takeout.'.format(self.single_reach_id)
-        )
+    def test_validate_reach_invalid_putin_takeout_coincidence(self):
+        result = validate.validate_reach(2, self.access_validate, hydro_net)
+        self.assertFalse(result['valid'])
 
-    def test_reach_accesses_coincident_with_hydrolines(self):
-        self.assertTrue(
-            utilities.validate._validate_putin_takeout_conicidence(self.single_reach_id, access_fc, hydro_net),
-            'Although reach id {} appears to have a putin and takeout, the accesses are not coincident. They are not on the USGS hyrdrolines.'.format(
-                self.single_reach_id)
-        )
+    def test_validate_putin_upstream_from_takeout_false(self):
+        result = validate._validate_putin_upstream_from_takeout(3, self.access_validate, hydro_net)
+        self.assertFalse(result)
 
-    def test_reach_putin_upstream_from_takeout(self):
-        self.assertTrue(
-            utilities.validate._validate_putin_upstream_from_takeout(
-                reach_id=self.single_reach_id,
-                access_fc=access_fc,
-                hydro_network=hydro_net
-            ),
-            'The putin does not appear to be upstream of the takeout for reach id {}.'.format(self.single_reach_id)
-        )
+    def test_validate_putin_upstream_from_takeout_true(self):
+        result = validate._validate_putin_upstream_from_takeout(4, self.access_validate, hydro_net)
+        self.assertTrue(result)
 
-    def test_get_reach_geometry(self):
-        reach = utilities.reach_processing.process_reach(
-            reach_id=self.single_reach_id,
-            access_fc=access_fc,
-            hydro_network=hydro_net
-        )
-        # initially set to true and if any of the segments do not have a geometry, fail
-        status = True
-        for geometry in reach['geometry_list']:
-            if not geometry.length:
-                status = False
+    def test_validate_reach_invalid_putin_upstream_from_takeout(self):
+        result = validate.validate_reach(4, self.access_validate, hydro_net)
+        self.assertFalse(result['valid'])
 
+<<<<<<< HEAD
         self.assertTrue(
             status,
             'At least one of the returned geometries appears not to have a length for reach id {}'.format(
@@ -320,3 +309,8 @@ class TestCaseGetWatershed(unittest.TestCase):
         end_hydroshed_count = int(arcpy.GetCount_management(hydroline_fc)[0])
         hydroshed_count = end_hydroshed_count - start_hydroshed_count
         self.assertEqual(2, hydroshed_count)
+=======
+    def test_validate_reach_valid(self):
+        result = validate.validate_reach(4, self.access_validate, hydro_net)
+        self.assertTrue(result['valid'])
+>>>>>>> rebuild_unit_tests
