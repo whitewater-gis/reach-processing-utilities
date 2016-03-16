@@ -110,7 +110,7 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
     arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
 
     # select by location, selecting accesses coincident with the hydrolines
-    arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='SUBSET_SELECTION')[0]
+    arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='NEW_SELECTION')
 
     # if successful, two access features should be selected, the put in and the takeout
     if int(arcpy.GetCount_management(access_lyr)[0]) == 2:

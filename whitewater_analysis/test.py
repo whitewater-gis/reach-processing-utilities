@@ -77,7 +77,7 @@ class TestCaseValidation(unittest.TestCase):
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_upstream_from_takeout(self):
-        result = validate.validate_reach(4, self.access_validate, hydro_net)
+        result = validate.validate_reach(2, self.access_validate, hydro_net)
         self.assertFalse(result['valid'])
 
     def test_validate_reach_valid(self):
