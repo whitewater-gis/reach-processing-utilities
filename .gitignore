@@ -2,3 +2,4 @@ resources
 .idea
 **/*.pyc
 **/1/*
+**/*.lock

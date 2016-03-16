@@ -32,7 +32,7 @@ import utilities.publishing_tools
 
 # variables
 access_fc = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access'
-hydro_net = r'H:\reach-processing\subregions\1711.gdb\Hydrography\HYDRO_NET'
+hydro_net = r'D:\dev\reach-processing-tools\test_data\1711.gdb\Hydrography\HYDRO_NET'
 huc4 = r'H:\reach-processing\aggregate\data_v3.gdb\WBDHU4'
 test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
