@@ -29,6 +29,7 @@ import utilities.nhd_data
 import utilities.validate as validate
 import utilities.reach_processing
 import utilities.publishing_tools
+import utilities.watershed as watershed
 
 # variables
 access_fc = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access'

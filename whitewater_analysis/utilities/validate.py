@@ -103,7 +103,12 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
     # create an access layer
     access_lyr = arcpy.MakeFeatureLayer_management(
         access_fc, 'putin_takeout_coincidence',
-        where_clause="{} = '{}'".format(arcpy.AddFieldDelimiters(data_source, 'reach_id'), reach_id)
+        where_clause="{}='{}' AND ({}='takeout' OR {} = 'putin'".format(
+            arcpy.AddFieldDelimiters(data_source, 'reach_id'),
+            reach_id,
+            arcpy.AddFieldDelimiters(data_source, 'type'),
+            arcpy.AddFieldDelimiters(data_source, 'type')
+        )
     )[0]
 
     # snap the putin and takeout to the hydrolines - this does not affect the permanent dataset, only this analysis
