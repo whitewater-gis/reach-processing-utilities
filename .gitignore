@@ -3,3 +3,4 @@ resources
 **/*.pyc
 **/1/*
 **/*.lock
+**/*.gdb
