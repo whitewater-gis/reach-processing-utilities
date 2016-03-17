@@ -100,22 +100,25 @@ def _validate_putin_takeout_conicidence(reach_id, access_fc, hydro_network):
     # get the path to the accesses feature class
     data_source = arcpy.Describe(access_fc).path
 
+    # sql statement
+    sql_select = "{0} = '{1}' AND( {2} = 'putin' OR {3} = 'takeout' )".format(
+        arcpy.AddFieldDelimiters(data_source, 'reach_id'),
+        reach_id,
+        arcpy.AddFieldDelimiters(data_source, 'type'),
+        arcpy.AddFieldDelimiters(data_source, 'type')
+    )
+
     # create an access layer
     access_lyr = arcpy.MakeFeatureLayer_management(
         access_fc, 'putin_takeout_coincidence',
-        where_clause="{}='{}' AND ({}='takeout' OR {} = 'putin'".format(
-            arcpy.AddFieldDelimiters(data_source, 'reach_id'),
-            reach_id,
-            arcpy.AddFieldDelimiters(data_source, 'type'),
-            arcpy.AddFieldDelimiters(data_source, 'type')
-        )
+        where_clause=sql_select
     )[0]
 
     # snap the putin and takeout to the hydrolines - this does not affect the permanent dataset, only this analysis
     arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
 
     # select by location, selecting accesses coincident with the hydrolines
-    arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='SUBSET_SELECTION')[0]
+    arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='NEW_SELECTION')
 
     # if successful, two access features should be selected, the put in and the takeout
     if int(arcpy.GetCount_management(access_lyr)[0]) == 2:

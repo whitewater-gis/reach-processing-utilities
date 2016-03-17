@@ -22,14 +22,14 @@ purpose:    Test the utilities to clean up and enhance the spatial component of 
 # import system modules
 import os.path
 import unittest
-
+import time
 import arcpy
 # import local modules
 import utilities.nhd_data
 import utilities.validate as validate
-import utilities.reach_processing
+import utilities.reach_processing as reach_processing
 import utilities.publishing_tools
-import utilities.watershed as watershed
+# import utilities.watershed as watershed
 
 # variables
 access_fc = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access'
@@ -78,5 +78,28 @@ class TestCaseValidation(unittest.TestCase):
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_upstream_from_takeout(self):
-        result = validate.validate_reach(4, self.access_validate, hydro_net)
+        result = validate.validate_reach(2, self.access_validate, hydro_net)
         self.assertFalse(result['valid'])
+
+    def test_validate_reach_valid(self):
+        result = validate.validate_reach(4, self.access_validate, hydro_net)
+        self.assertTrue(result['valid'])
+
+
+class TestReachProcessing(unittest.TestCase):
+    """
+    Test reach processing tools.
+    """
+    access_validate = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_validate_test'
+
+    def test_process_reach(self):
+        result = reach_processing.process_reach(4, self.access_validate, hydro_net)
+        self.assertTrue(result['valid'])
+
+    def test_get_reach_line_feature_class(self):
+        milliseconds = int(time.time()*100)
+        hydroline_fc = os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
+        invalid_tbl = os.path.join(test_gdb, 'invalid_tbl{0}'.format(milliseconds))
+        reach_processing.get_reach_line_fc(self.access_validate, hydro_net, hydroline_fc, invalid_tbl)
+        feature_count = int(arcpy.GetCount_management(hydroline_fc)[0])
+        self.assertEqual(1, feature_count)
