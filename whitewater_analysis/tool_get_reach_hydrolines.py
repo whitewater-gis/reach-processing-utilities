@@ -22,6 +22,8 @@ from arcpy import GetParameter
 from arcpy import GetParameterAsText
 from utilities import get_reach_line_fc
 
+from arcpy import AddMessage
+
 # collect input parameters and run functions
 get_reach_line_fc(
     access_fc=GetParameter(0),
@@ -29,3 +31,5 @@ get_reach_line_fc(
     reach_hydroline_fc=GetParameterAsText(2),
     reach_invalid_tbl=GetParameterAsText(3)
 )
+
+AddMessage('starting processing')
