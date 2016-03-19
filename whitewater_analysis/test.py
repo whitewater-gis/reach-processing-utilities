@@ -32,7 +32,6 @@ import utilities.publishing_tools
 # import utilities.watershed as watershed
 
 # variables
-access_fc = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access'
 hydro_net = r'D:\dev\reach-processing-tools\test_data\1711.gdb\Hydrography\HYDRO_NET'
 huc4 = r'H:\reach-processing\aggregate\data_v3.gdb\WBDHU4'
 test_gdb = arcpy.env.scratchGDB
@@ -103,3 +102,34 @@ class TestReachProcessing(unittest.TestCase):
         reach_processing.get_reach_line_fc(self.access_validate, hydro_net, hydroline_fc, invalid_tbl)
         feature_count = int(arcpy.GetCount_management(hydroline_fc)[0])
         self.assertEqual(1, feature_count)
+
+
+class TestReachReview(unittest.TestCase):
+    """
+    Test reach review functionality
+    """
+    access_review = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_revise_test'
+    hydrolines = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\hydroline_revise_test'
+    invalid_table = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\invalid_revise_test'
+
+    def test_get_new_reach_hydrolines(self):
+
+        milliseconds = int(time.time()*100)
+        temp_hydroline = arcpy.CopyFeatures_management(
+            self.hydrolines,
+            os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
+        )[0]
+        temp_invalid = arcpy.CopyRows_management(
+            self.invalid_table,
+            os.path.join(test_gdb, 'invalid_tbl{0}'.format(milliseconds))
+        )[0]
+
+        reach_processing.get_new_hydrolines(
+            access_fc=self.access_review,
+            hydro_network=hydro_net,
+            reach_hydroline_fc=temp_hydroline,
+            reach_invalid_tbl=temp_invalid
+        )
+        feature_count = int(arcpy.GetCount_management(temp_hydroline)[0])
+
+        self.assertEqual(2, feature_count)
