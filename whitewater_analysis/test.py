@@ -24,12 +24,14 @@ import os.path
 import unittest
 import time
 import arcpy
+import json
 
 # import local modules
-import utilities.nhd_data
+# import utilities.nhd_data
 import utilities.validate as validate
 import utilities.reach_processing as reach_processing
-import utilities.publishing_tools
+import utilities.update as update
+# import utilities.publishing_tools
 # import utilities.watershed as watershed
 
 # variables
@@ -134,3 +136,12 @@ class TestReachReview(unittest.TestCase):
         feature_count = int(arcpy.GetCount_management(temp_hydroline)[0])
 
         self.assertEqual(2, feature_count)
+
+
+class TestUpdate(unittest.TestCase):
+
+    def test_get_reach(self):
+        reachId = 3306
+        responseJson = update.get_reach(reachId)
+        responseObject = json.loads(responseJson)
+        self.assertEqual(reachId, responseObject['features'][0]['properties']['reachId'])
