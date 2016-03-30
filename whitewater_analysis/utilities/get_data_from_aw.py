@@ -1,7 +1,9 @@
 # import modules
-import requests
 import json
+
 import arcpy
+
+import requests
 
 
 # wrap up getting the loaded JSON in a single function
@@ -24,7 +26,6 @@ def get_reach_json(reach_id):
 
 
 def get_points(hydropoint_feature_class):
-
     invalid_count = 0  # counter to keep track of consecutive failed requests
     reach_counter = 1  # coutner to iterate reach id's
 
@@ -60,7 +61,6 @@ def get_points(hydropoint_feature_class):
 
                     # if there are coordinates
                     if point_json['geometry']['coordinates'][0] and point_json['geometry']['coordinates'][1]:
-
                         row = [
                             point_json['properties']['reachId'],
                             point_json['properties']['tags'],
@@ -84,6 +84,30 @@ def get_points(hydropoint_feature_class):
     # return the list of reach id's
     return True
 
+
+def etl_from_aw_points_to_reach_access(aw_points_fc, reach_access_fc):
+
+    # for the respective putin and takeout point types
+    for access_type in ['putin', 'takeout', 'intermediate']:
+
+        # create a layer of just access points
+        access_layer = arcpy.MakeFeatureLayer_management(aw_points_fc, 'access_layer', "tags LIKE '%access%'")[0]
+
+        # create an insert cursor to add data
+        with arcpy.da.InsertCursor(
+            reach_access_fc,
+            [u'reach_id', u'type', u'name', 'SHAPE@XY']
+        ) as insert_cursor:
+
+            # use a search cursor to itereate all the points of the selected type
+            with arcpy.da.SearchCursor(
+                aw_points_fc,
+                [u'reachId', u'name', 'SHAPE@XY'],
+                "tags LIKE '%{}%'".format(access_type)
+            ) as search_cursor:
+                for search_row in search_cursor:
+                    insert_row = [search_row[0], access_type, search_row[1], search_row[2]]
+                    insert_cursor.insertRow(insert_row)
 
 # test the thing
 get_points(r'H:\reach-processing\resources\scratch_data.gdb\points20150325')
