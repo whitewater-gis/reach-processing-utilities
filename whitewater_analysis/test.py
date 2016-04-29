@@ -29,7 +29,7 @@ import json
 # import local modules
 # import utilities.nhd_data
 import utilities.validate as validate
-import utilities.reach_processing as reach_processing
+import utilities.reach_processing_utilities as reach_processing
 import utilities.update as update
 # import utilities.publishing_tools
 # import utilities.watershed as watershed
