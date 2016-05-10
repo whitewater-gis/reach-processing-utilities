@@ -88,10 +88,20 @@ def get_watersheds(reach_hydroline_feature_class, access_feature_class, watershe
     workspace = os.path.dirname(arcpy.Describe(access_feature_class).catalogPath)
 
     # start the sql string to only select putins using a definition query
-    sql_putin_select = "{} = 'takeout'".format(arcpy.AddFieldDelimiters(workspace, 'type'))
+    sql_putin_select = "{} = 'putin'".format(arcpy.AddFieldDelimiters(workspace, 'type'))
 
     # create a new layer with just putins
     putin_layer = arcpy.MakeFeatureLayer_management(
+        in_features=access_feature_class,
+        out_layer='putin_layer',
+        where_clause=sql_putin_select
+    )[0]
+
+    # start the sql string to only select putins using a definition query
+    sql_takeout_select = "{} = 'takeout'".format(arcpy.AddFieldDelimiters(workspace, 'type'))
+
+    # create a new layer with just putins
+    takeout_layer = arcpy.MakeFeatureLayer_management(
         in_features=access_feature_class,
         out_layer='takeout_layer',
         where_clause=sql_putin_select
@@ -100,8 +110,8 @@ def get_watersheds(reach_hydroline_feature_class, access_feature_class, watershe
     # for each reach id
     for i, reach_id_chunk in enumerate(reach_id_chunk_list):
 
-        # add a message of what we are doing
-        arcpy.AddMessage('Processing {} of {} reach chunks.'.format(i, len(reach_id_chunk_list)))
+        # report progress
+        arcpy.AddMessage('Processing {} of {} chunks.'.format(i+1, len(reach_id_chunk_list)))
 
         # for each reach id in the chunk, build up the sql to select all the reach ids in the chunk
         sql_list = map(
@@ -110,27 +120,44 @@ def get_watersheds(reach_hydroline_feature_class, access_feature_class, watershe
         )
         sql = " OR ".join(sql_list)
 
-        # select the reach id's from the layer
-        reach_feature_set = arcpy.FeatureSet(arcpy.Select_analysis(
-            in_features=putin_layer,
-            out_feature_class='in_memory/selected_features',
-            where_clause=sql
-        ))
+        for x, access_layer in enumerate([putin_layer, takeout_layer]):
 
-        # get the list of hydroshed tuples
-        hydroshed_tuples = get_watershed_tuples(reach_feature_set)
+            # select the reach id's from the layer
+            reach_feature_set = arcpy.FeatureSet(arcpy.Select_analysis(
+                in_features=putin_layer,
+                out_feature_class='in_memory/selected_features',
+                where_clause=sql
+            ))
 
-        # delete the in memory data
-        arcpy.Delete_management('in_memory/selected_features')
+            # get the list of hydroshed tuples
+            hydroshed_tuples = get_watershed_tuples(reach_feature_set)
 
-        # write the hydroshed to the watershed feature class
-        with arcpy.da.InsertCursor(watershed_feature_class, ['reach_id', 'type', 'SHAPE@']) as insert_cursor:
+            # delete the in memory data
+            arcpy.Delete_management('in_memory/selected_features')
 
-            # iterate the hydrosheds created
-            for hydroshed_tuple in hydroshed_tuples:
+            # in case nothing is processed False is returned
+            if hydroshed_tuples is False:
 
-                # insert the new hydroshed
-                insert_cursor.insertRow([hydroshed_tuple[0], 'takeout', hydroshed_tuple[1]])
+                # report the issue
+                arcpy.AddWarning('No reaches processed and no watersheds created.')
+
+            # otherwise
+            else:
+
+                # set the correct access type
+                if x == 0:
+                    access_type = 'putin'
+                else:
+                    access_type = 'takeout'
+
+                # write the hydroshed to the watershed feature class
+                with arcpy.da.InsertCursor(watershed_feature_class, ['reach_id', 'type', 'SHAPE@']) as insert_cursor:
+
+                    # iterate the hydrosheds created
+                    for hydroshed_tuple in hydroshed_tuples:
+
+                        # insert the new hydroshed
+                        insert_cursor.insertRow([hydroshed_tuple[0], access_type, hydroshed_tuple[1]])
 
     # return the path to the updated watershed feature class
     return watershed_feature_class
