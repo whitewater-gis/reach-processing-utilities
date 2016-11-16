@@ -44,7 +44,7 @@ def field_valid(field):
         return False
 
     # exclude global id field
-    if field.type == 'GlobalID':
+    elif field.type == 'GlobalID':
         return False
 
     # exclude the geometry field
@@ -73,7 +73,7 @@ def add_fields_from_table(input_table, add_table):
     Append attribute fields to the input table from the add table. This function does not populate the values. Rather,
     it only reads the input field properties from the add table and adds these fields to the input table.
     :param input_table: Table to add the fields to.
-    :param append_table: Table with fields to be added to the input table.
+    :param add_table: Table with fields to be added to the input table.
     :return: List of fields added.
     """
     # get a list of fields from the table

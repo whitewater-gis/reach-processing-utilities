@@ -27,7 +27,7 @@ def get_reach_json(reach_id):
 
 def get_points(hydropoint_feature_class):
     invalid_count = 0  # counter to keep track of consecutive failed requests
-    reach_counter = 1  # coutner to iterate reach id's
+    reach_counter = 1  # counter to iterate reach id's
 
     def validate_against_field_length(data, field_length):
         if data:
@@ -101,7 +101,7 @@ def etl_from_aw_points_to_reach_access(aw_points_fc, reach_access_fc):
 
             # use a search cursor to itereate all the points of the selected type
             with arcpy.da.SearchCursor(
-                aw_points_fc,
+                access_layer,
                 [u'reachId', u'name', 'SHAPE@XY'],
                 "tags LIKE '%{}%'".format(access_type)
             ) as search_cursor:
@@ -110,4 +110,4 @@ def etl_from_aw_points_to_reach_access(aw_points_fc, reach_access_fc):
                     insert_cursor.insertRow(insert_row)
 
 # test the thing
-get_points(r'H:\reach-processing\resources\scratch_data.gdb\points20150325')
+get_points(r'D:\dev\reach-processing-tools\resources\scratch\staging.gdb\points20150523')
