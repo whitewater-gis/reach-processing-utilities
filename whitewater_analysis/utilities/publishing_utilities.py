@@ -229,13 +229,42 @@ def create_feature_class_with_meta(input_feature_class, meta_table, target_featu
     return out_fc
 
 
-def get_navigation_link(xy_tuple):
+def get_google_navigation_link(xy_tuple):
     """
-    Create a navigation link from a tuple containing an x and y tuple.
+    Create a navigation link from a tuple containing an x and y tuple for Google Maps.
     :param xy_tuple: Tuple of (x,y) coordinates.
     :return: String url to be used for navigation.
     """
-    return 'http://maps.google.com/maps?daddr={},{}&saddr=Current%20Location'.format(xy_tuple[1], xy_tuple[0])
+    return 'http://maps.google.com/maps?daddr={lat},{lon}&saddr=Current%20Location'.format(
+        lat=xy_tuple[1], lon=xy_tuple[0])
+
+
+def get_waze_navigation_link(xy_tuple):
+    """
+    Create a navigation link from a tuple containing an x and y tuple for Waze.
+    :param xy_tuple: Tuple of (x,y) coordinates.
+    :return: String url opening directly in waze for navigation.
+    """
+    return 'waze://?ll={lat},{lon}&navigate=yes'.format(lat=xy_tuple[1], lon=xy_tuple[0])
+
+
+def get_navigator_navigation_link(xy_tuple, destination_name=None):
+    """
+    Get a navigation link for ArcGIS navigator. Useful for when completely offline.
+    :param xy_tuple: Tuple delineating destination using X and Y coordinates in WGS84 decimal degrees.
+    :param destination_name: Name for the destination.
+    :return: Link for use with mobile applications.
+    """
+    # create a string with all the parameters for a stop provided
+    stop_string = 'stop={x},{y}'.format(x=xy_tuple[0], y=xy_tuple[1])
+
+    # if a name is provided for the destination, add the stop name to the string
+    if destination_name:
+        destination_name = destination_name.trim().replace(' ', '+')
+        stop_string += 'stopname={name}'.format(name=destination_name)
+
+    # create the full hyperlink string and return it
+    return 'arcgis-navigator://?{stop}&travelmode=Rural+Driving+Time&navigate=true'.format(stop=stop_string)
 
 
 def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_class, parking_feature_class):
@@ -249,20 +278,21 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
     # add the fields to the table to store navigation hyperlinks
     arcpy.AddField_management(
         in_table=hydroline_feature_class,
-        field_name='nav_link_putin',
+        field_name='nav_link_putin_google',
         field_type='TEXT',
         field_length='300',
-        field_alias='Put In Navigation Link'
+        field_alias='Put In Navigation Link - Google'
     )
     arcpy.AddField_management(
         in_table=hydroline_feature_class,
-        field_name='nav_link_takeout',
+        field_name='nav_link_takeout_google',
         field_type='TEXT',
         field_length='300',
-        field_alias='Take Out Navigation Link'
+        field_alias='Take Out Navigation Link - Google'
     )
 
     # create list for parking and access putin and takeout coordinates
+    # TODO: update the type based on coded text values, not integers
     park_putin_list = [row for row in arcpy.da.SearchCursor(parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
     park_takeout_list = [row for row in arcpy.da.SearchCursor(parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
     access_putin_list = [row for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
@@ -290,7 +320,7 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
                 xy_putin = [loc[1] for loc in access_putin_list if loc[0] == update_row[0]][0]
 
             # modify the update cursor putin link with the navigation url
-            update_row[1] = get_navigation_link(xy_putin)
+            update_row[1] = get_google_navigation_link(xy_putin)
 
             # try to get the takeout coordinates from the takeout parking area
             takeout = [loc[1] for loc in park_takeout_list if loc[0] == update_row[0]]
@@ -306,7 +336,7 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
                 xy_takeout = [loc[1] for loc in access_takeout_list if loc[0] == update_row[0]][0]
 
             # modify the update cursor takeout link with the navigation url
-            update_row[2] = get_navigation_link(xy_takeout)
+            update_row[2] = get_google_navigation_link(xy_takeout)
 
             # commit the changes
             update_cursor.updateRow(update_row)
@@ -350,6 +380,7 @@ def create_invalid_points_feature_class(access_feature_class, invalid_reach_tabl
     :param invalid_reach_table: Table of reaches not passing validation.
     :return: Path to invalid points feature class.
     """
+    # TODO: update the type based on coded text values, not integers
     # create tuple pairs of putin and takeout reach ids and geometries
     putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
     takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
