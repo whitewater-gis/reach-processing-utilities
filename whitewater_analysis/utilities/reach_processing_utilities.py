@@ -49,23 +49,23 @@ def create_hydroline_feature_class(full_path_to_hydroline_feature_class, spatial
     return hydroline_fc
 
 
-def create_invalid_table(full_path_to_invalid_table):
+def create_invalid_feature_class(full_path_to_invalid_feature_class):
     """
     Create the invalid table.
-    :param full_path_to_invalid_table: Full path where the invalid table will reside.
+    :param full_path_to_invalid_feature_class: Full path where the invalid feature class will reside.
     :return: Path to the invalid table.
     """
     # create output invalid reach table
-    invalid_tbl = arcpy.CreateTable_management(
-        out_path=os.path.dirname(full_path_to_invalid_table),
-        out_name=os.path.basename(full_path_to_invalid_table)
+    invalid_feature_class = arcpy.CreateFeatureClass_management(
+        out_path=os.path.dirname(full_path_to_invalid_feature_class),
+        out_name=os.path.basename(full_path_to_invalid_feature_class)
     )
 
     # add field for the reach id in the invalid table
-    arcpy.AddField_management(in_table=invalid_tbl, field_name='reach_id', field_type='TEXT', field_length=10)
+    arcpy.AddField_management(in_table=invalid_feature_class, field_name='reach_id', field_type='TEXT', field_length=10)
 
     # add field in invalid table for reason
-    arcpy.AddField_management(in_table=invalid_tbl, field_name='reason', field_type='TEXT', field_length=500)
+    arcpy.AddField_management(in_table=invalid_feature_class, field_name='reason', field_type='TEXT', field_length=500)
 
 
 def check_if_hydroline_manually_digitized(hydroline_feature_class, reach_id):
@@ -183,7 +183,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
     # if the invalid table does not already exist, create it
     if not arcpy.Exists(reach_invalid_tbl):
-        create_invalid_table(reach_invalid_tbl)
+        create_invalid_feature_class(reach_invalid_tbl)
 
     # progress tracker
     valid_count = 0
