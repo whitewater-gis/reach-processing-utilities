@@ -29,6 +29,7 @@ def create_hydroline_feature_class(full_path_to_hydroline_feature_class, spatial
     """
     Create the output hydroline feature class.
     :param full_path_to_hydroline_feature_class: The full path to where the data is intended to be stored.
+    :param spatial_reference: Spatial reference object for the output feature class.
     :return: Path to created resource
     """
     # create output hydroline feature class
@@ -49,16 +50,19 @@ def create_hydroline_feature_class(full_path_to_hydroline_feature_class, spatial
     return hydroline_fc
 
 
-def create_invalid_feature_class(full_path_to_invalid_feature_class):
+def create_invalid_feature_class(full_path_to_invalid_feature_class, spatial_reference):
     """
     Create the invalid table.
     :param full_path_to_invalid_feature_class: Full path where the invalid feature class will reside.
+    :param spatial_reference: Spatial reference object for the output feature class.
     :return: Path to the invalid table.
     """
     # create output invalid reach table
-    invalid_feature_class = arcpy.CreateFeatureClass_management(
+    invalid_feature_class = arcpy.CreateFeatureclass_management(
         out_path=os.path.dirname(full_path_to_invalid_feature_class),
-        out_name=os.path.basename(full_path_to_invalid_feature_class)
+        out_name=os.path.basename(full_path_to_invalid_feature_class),
+        geometry_type='POINT',
+        spatial_reference=spatial_reference
     )
 
     # add field for the reach id in the invalid table
@@ -84,6 +88,26 @@ def check_if_hydroline_manually_digitized(hydroline_feature_class, reach_id):
 
     # if the feature count is zero, it is false, but if any other number, it will return a true value
     return int(arcpy.GetCount_management(hydro_layer)[0])
+
+
+def get_reach_centroid(putin_geometry, takeout_geometry):
+    """
+    From two geometry objects, one for the location of the putin and another for the location of the takeout, calculate
+    the middle, halfway between the two, to use as a marker, the centroid for the reach.
+    :param putin_geometry: Geometry object representing the putin.
+    :param takeout_geometry: Geometry object representing the takeout.
+    :return: Geometry object at the centroid for the reach.
+    """
+    # calculate half of the absolute difference between the two coordinates' respective x & y values
+    halfdelta_x = abs(putin_geometry.centroid.X, takeout_geometry.centroid.X) / 2
+    halfdelta_y = abs(putin_geometry.centroid.Y, takeout_geometry.centroid.Y) / 2
+
+    # add half of the delta to each minimum value
+    centroid_x = min(putin_geometry.centroid.X, takeout_geometry.centroid.X) + halfdelta_x
+    centroid_y = min(putin_geometry.centroid.Y, takeout_geometry.centroid.Y) + halfdelta_y
+
+    # return a geometry object delineating this new location
+    return arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
 
 
 def process_reach(reach_id, access_fc, hydro_network):
@@ -156,8 +180,11 @@ def process_reach(reach_id, access_fc, hydro_network):
         arcpy.AddWarning('Although {} passed validation, it still bombed the process. Here is the error:\n{}'.format(
             reach_id, e))
 
+        # get the centroid geometry
+        centroid_geometry = get_reach_centroid(putin_geometry, takeout_geometry)
+
         # return result as failed reach to be logged in invalid table
-        return {'valid': False, 'reach_id': reach_id, 'reason': e}
+        return {'valid': False, 'reach_id': reach_id, 'reason': e, 'geometry': centroid_geometry}
 
 
 def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
@@ -177,13 +204,16 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
     # give a little beta to the front end
     arcpy.AddMessage('{} reaches queued for processing.'.format(len(reach_id_list)))
 
+    # get the spatial reference from the input access feature class, typically nad83 to match the NHD data
+    spatial_reference = arcpy.Describe(access_fc).spatialReference
+
     # if the output hydroline feature class does not already exist, create it
     if not arcpy.Exists(reach_hydroline_fc):
-        create_hydroline_feature_class(reach_hydroline_fc, arcpy.Describe(access_fc).spatialReference)
+        create_hydroline_feature_class(reach_hydroline_fc, spatial_reference)
 
     # if the invalid table does not already exist, create it
     if not arcpy.Exists(reach_invalid_tbl):
-        create_invalid_feature_class(reach_invalid_tbl)
+        create_invalid_feature_class(reach_invalid_tbl, spatial_reference)
 
     # progress tracker
     valid_count = 0
@@ -208,7 +238,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
                 for geometry in reach['geometry_list']:
 
                     # add the valid reach to the list
-                    valid_list.append((reach['reach_id'], 0, geometry))
+                    valid_list.append([reach['reach_id'], 0, geometry])
 
                 # increment the valid counter
                 valid_count += 1
@@ -217,7 +247,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             elif not reach['valid']:
 
                 # add the invalid reach to the invalid list
-                invalid_list.append((str(reach['reach_id']), reach['reason']))
+                invalid_list.append([str(reach['reach_id']), reach['reason'], reach['geometry']])
 
     # create an insert cursor for the reach feature class
     with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@')) as reach_cursor:
@@ -227,8 +257,8 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
             reach_cursor.insertRow(valid_reach)
 
-    # create an insert cursor for the invalid table
-    with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason')) as invalid_cursor:
+    # create an insert cursor for the invalid feature class
+    with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason', 'SHAPE@XY')) as invalid_cursor:
 
         # iterate the invalid list
         for invalid_reach in invalid_list:
