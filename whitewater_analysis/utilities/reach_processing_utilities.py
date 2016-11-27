@@ -50,26 +50,23 @@ def create_hydroline_feature_class(full_path_to_hydroline_feature_class, spatial
     return hydroline_fc
 
 
-def create_invalid_feature_class(full_path_to_invalid_feature_class, spatial_reference):
+def create_invalid_table(full_path_to_invalid_table):
     """
     Create the invalid table.
-    :param full_path_to_invalid_feature_class: Full path where the invalid feature class will reside.
-    :param spatial_reference: Spatial reference object for the output feature class.
+    :param full_path_to_invalid_table: Full path where the invalid feature class will reside.
     :return: Path to the invalid table.
     """
     # create output invalid reach table
-    invalid_feature_class = arcpy.CreateFeatureclass_management(
-        out_path=os.path.dirname(full_path_to_invalid_feature_class),
-        out_name=os.path.basename(full_path_to_invalid_feature_class),
-        geometry_type='POINT',
-        spatial_reference=spatial_reference
+    invalid_table = arcpy.CreateFeatureclass_management(
+        out_path=os.path.dirname(full_path_to_invalid_table),
+        out_name=os.path.basename(full_path_to_invalid_table)
     )
 
     # add field for the reach id in the invalid table
-    arcpy.AddField_management(in_table=invalid_feature_class, field_name='reach_id', field_type='TEXT', field_length=10)
+    arcpy.AddField_management(in_table=invalid_table, field_name='reach_id', field_type='TEXT', field_length=10)
 
     # add field in invalid table for reason
-    arcpy.AddField_management(in_table=invalid_feature_class, field_name='reason', field_type='TEXT', field_length=500)
+    arcpy.AddField_management(in_table=invalid_table, field_name='reason', field_type='TEXT', field_length=500)
 
 
 def check_if_hydroline_manually_digitized(hydroline_feature_class, reach_id):
@@ -180,11 +177,8 @@ def process_reach(reach_id, access_fc, hydro_network):
         arcpy.AddWarning('Although {} passed validation, it still bombed the process. Here is the error:\n{}'.format(
             reach_id, e))
 
-        # get the centroid geometry
-        centroid_geometry = get_reach_centroid(putin_geometry, takeout_geometry)
-
         # return result as failed reach to be logged in invalid table
-        return {'valid': False, 'reach_id': reach_id, 'reason': e, 'geometry': centroid_geometry}
+        return {'valid': False, 'reach_id': reach_id, 'reason': e}
 
 
 def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invalid_tbl):
@@ -213,7 +207,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
 
     # if the invalid table does not already exist, create it
     if not arcpy.Exists(reach_invalid_tbl):
-        create_invalid_feature_class(reach_invalid_tbl, spatial_reference)
+        create_invalid_table(reach_invalid_tbl)
 
     # progress tracker
     valid_count = 0
@@ -247,7 +241,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             elif not reach['valid']:
 
                 # add the invalid reach to the invalid list
-                invalid_list.append([str(reach['reach_id']), reach['reason'], reach['geometry']])
+                invalid_list.append([str(reach['reach_id']), reach['reason']])
 
     # create an insert cursor for the reach feature class
     with arcpy.da.InsertCursor(reach_hydroline_fc, ('reach_id', 'manual_digitize', 'SHAPE@')) as reach_cursor:
@@ -258,7 +252,7 @@ def get_reach_line_fc(access_fc, hydro_network, reach_hydroline_fc, reach_invali
             reach_cursor.insertRow(valid_reach)
 
     # create an insert cursor for the invalid feature class
-    with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason', 'SHAPE@XY')) as invalid_cursor:
+    with arcpy.da.InsertCursor(reach_invalid_tbl, ('reach_id', 'reason')) as invalid_cursor:
 
         # iterate the invalid list
         for invalid_reach in invalid_list:

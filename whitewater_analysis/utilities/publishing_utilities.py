@@ -21,6 +21,7 @@ purpose:    Provide the utilities to process and publish whitewater reach data.
 import os
 import numpy
 import arcpy
+import math
 
 
 def get_reach_id_field(feature_class):
@@ -208,7 +209,17 @@ def create_feature_class_with_meta(input_feature_class, meta_table, target_featu
     meta_field_name_list = ['reach_id'] + [field.name for field in valid_field_list]
 
     # create a dictionary of meta
-    meta_list = [row for row in arcpy.da.SearchCursor(meta_table, meta_field_name_list)]
+    meta_dict = {}
+    for row in arcpy.da.SearchCursor(meta_table, meta_field_name_list):
+
+        # convert the row to a list
+        row = list(row)
+
+        # account for possibility of leading zeros, and remove
+        row[0] = str(int(row[0]))
+
+        # add to the dictionary
+        meta_dict[row[0]] = row
 
     # use update cursor to populate meta values
     with arcpy.da.UpdateCursor(out_fc, meta_field_name_list) as update_cursor:
@@ -217,14 +228,11 @@ def create_feature_class_with_meta(input_feature_class, meta_table, target_featu
         for row in update_cursor:
 
             # find the right reach meta using the reach id field in the row
-            meta_row = [item for item in meta_list if item[0] == row[0]]
-
-            # if something found
-            if len(meta_row):
+            if row[0] in meta_dict.keys():
 
                 # update the row using the meta values
-                update_cursor.updateRow(meta_row[0])
-
+                update_cursor.updateRow(meta_dict[row[0]])
+                
     # return the path to the output data
     return out_fc
 
@@ -292,28 +300,31 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
     )
 
     # create list for parking and access putin and takeout coordinates
-    # TODO: update the type based on coded text values, not integers
-    park_putin_list = [row for row in arcpy.da.SearchCursor(parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
-    park_takeout_list = [row for row in arcpy.da.SearchCursor(parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
-    access_putin_list = [row for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
-    access_takeout_list = [row for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
+    park_putin_list = [row for row in arcpy.da.SearchCursor(
+        parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 'putin'")]
+    park_takeout_list = [row for row in arcpy.da.SearchCursor(
+        parking_feature_class, ('reach_id', 'SHAPE@XY'), "type = 'takeout'")]
+    access_putin_list = [row for row in arcpy.da.SearchCursor(
+        access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 'putin'")]
+    access_takeout_list = [row for row in arcpy.da.SearchCursor(
+        access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 'takeout'")]
 
     # use an update cursor to iterate the reaches
     with arcpy.da.UpdateCursor(
-            hydroline_feature_class, (get_reach_id_field(hydroline_feature_class), 'nav_link_putin', 'nav_link_takeout')
+            hydroline_feature_class, (get_reach_id_field(hydroline_feature_class), 'nav_link_putin_google', 'nav_link_takeout_google')
     ) as update_cursor:
 
         # iterate the rows
         for update_row in update_cursor:
 
-            # try to get the putin coordinates from the putin parking area
+            # try to get the putin coordinates from the putin parking point
             putin = [loc[1] for loc in park_putin_list if loc[0] == update_row[0]]
 
             # if anything is found in the parking feature class, save it
             if len(putin):
                 xy_putin = putin[0]
 
-            # if there is not a parking area
+            # if there is not a parking point
             else:
 
                 # get the putin coordinates from the putin feature class
@@ -325,11 +336,11 @@ def add_navigation_links_to_hydrolines(hydroline_feature_class, access_feature_c
             # try to get the takeout coordinates from the takeout parking area
             takeout = [loc[1] for loc in park_takeout_list if loc[0] == update_row[0]]
 
-            # if a takeout parking area is found
+            # if a takeout parking point is found
             if len(takeout):
                 xy_takeout = takeout[0]
 
-            # if there is not a parking area
+            # if there is not a parking point
             else:
 
                 # get the takeout coordinates using the reach_id from the update cursor
@@ -380,44 +391,36 @@ def create_invalid_points_feature_class(access_feature_class, invalid_reach_tabl
     :param invalid_reach_table: Table of reaches not passing validation.
     :return: Path to invalid points feature class.
     """
-    # TODO: update the type based on coded text values, not integers
-    # create tuple pairs of putin and takeout reach ids and geometries
-    putin_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 0")]
-    takeout_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 1")]
 
-    # create a list of invalid reach id's and invalid reasons
-    invalid_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(invalid_reach_table, ('reach_id', 'reason'))]
+    # get the reach coordinates for the putin and takeout if they exist
+    def get_reach_centroid(access_feature_class, reach_id):
 
-    # create a list to store invalid reaches
-    invalid_point_list = []
+        # initialize variables to store coordinate pairs as nonetype
+        putin_coords = None
+        takeout_coords = None
 
-    # for every invalid reach
-    for invalid_reach in invalid_list:
+        # attempt to get the coordinates for the putin and takeout
+        for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 'putin'"):
+            if row[0] == reach_id:
+                putin_coords = row[1]
+                break
+        for row in arcpy.da.SearchCursor(access_feature_class, ('reach_id', 'SHAPE@XY'), "type = 'takeout'"):
+            if row[0] == reach_id:
+                takeout_coords = row[1]
+                break
 
-        # find the coordinates for the putin and takeout
-        putin_coords = [reach_id[1] for reach_id in putin_list if reach_id[0] == invalid_reach[0]][0]
-        takeout_coords = [reach_id[1] for reach_id in takeout_list if reach_id[0] == invalid_reach[0]][0]
-
-        # compare the coordinates to ascertain which is min and max, and then calculate the median
-        def get_median_coord(putin_coord, takeout_coord):
-            if putin_coord is None and takeout_coord is None:
-                return None
-            elif putin_coord is None:
-                return takeout_coord
-            elif takeout_coord is None:
-                return putin_coord
-            elif putin_coord > takeout_coord:
-                return putin_coord - (putin_coord - takeout_coord) / 2
-            else:
-                return takeout_coord - (takeout_coord - putin_coord) / 2
-
-        # get the coordinates
-        x = get_median_coord(putin_coords[0], takeout_coords[0])
-        y = get_median_coord(putin_coords[1], takeout_coords[1])
-
-        # add the reach to the list
-        if x and y:
-            invalid_point_list.append((invalid_reach[0], invalid_reach[1], (x, y)))
+        # return coordinates for the best location for the reach available
+        if putin_coords is None and takeout_coords is None:
+            return None
+        elif putin_coords is None:
+            return takeout_coords
+        elif takeout_coords is None:
+            return putin_coords
+        else:
+            return (
+                min([putin_coords[0], takeout_coords[0]]) + abs(putin_coords[0] - takeout_coords[0]) / 2,
+                min([putin_coords[1], takeout_coords[1]]) + abs(putin_coords[1] - takeout_coords[1]) / 2
+            )
 
     # create the output feature class
     out_fc = arcpy.CreateFeatureclass_management(
@@ -443,14 +446,20 @@ def create_invalid_points_feature_class(access_feature_class, invalid_reach_tabl
         field_alias='Reason'
     )
 
+    # create a list of invalid reach id's and invalid reasons
+    invalid_list = [(row[0], row[1]) for row in arcpy.da.SearchCursor(invalid_reach_table, ('reach_id', 'reason'))]
+
     # use an insert cursor to add records to the feature class
     with arcpy.da.InsertCursor(out_fc, ('reach_id', 'reason', 'SHAPE@XY')) as cursor:
 
-        # iterate the invalid list
-        for invalid_point in invalid_point_list:
+        # for every invalid reach
+        for invalid_reach in invalid_list:
+
+            # get the reach centroid
+            centroid = get_reach_centroid(access_feature_class, invalid_reach[0])
 
             # insert a new record
-            cursor.insertRow(invalid_point)
+            cursor.insertRow([invalid_reach[0], invalid_reach[1], centroid])
 
     # return the path to the output feature class
     return out_fc
@@ -515,7 +524,7 @@ def create_publication_geodatabase(analysis_gdb, publication_gdb):
             if row[0] and row[1]:
 
                 # concatenate the name and section together in one field
-                row[2] = row[0] + ": " + row[1]
+                row[2] = "{}: {}".format(row[0], row[1])
 
             # if just the river is there
             elif row[0]:

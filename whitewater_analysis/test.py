@@ -25,14 +25,16 @@ import unittest
 import time
 import arcpy
 import json
+import uuid
 
 # import local modules
 # import utilities.nhd_data
 import utilities.validate as validate
 import utilities.reach_processing_utilities as reach_processing
-import utilities.update as update
+# import utilities.update as update
 # import utilities.publishing_tools
 # import utilities.watershed as watershed
+import utilities.publishing_utilities as publishing_utilities
 
 # variables
 hydro_net = r'D:\dev\reach-processing-tools\test_data\1711.gdb\Hydrography\HYDRO_NET'
@@ -138,10 +140,49 @@ class TestReachReview(unittest.TestCase):
         self.assertEqual(2, feature_count)
 
 
-class TestUpdate(unittest.TestCase):
+# class TestUpdate(unittest.TestCase):
+#
+#     def test_get_reach(self):
+#         reachId = 3306
+#         responseJson = update.get_reach(reachId)
+#         responseObject = json.loads(responseJson)
+#         self.assertEqual(reachId, responseObject['features'][0]['properties']['reachId'])
 
-    def test_get_reach(self):
-        reachId = 3306
-        responseJson = update.get_reach(reachId)
-        responseObject = json.loads(responseJson)
-        self.assertEqual(reachId, responseObject['features'][0]['properties']['reachId'])
+class TestPublishingUtilitites(unittest.TestCase):
+    """
+    Provide at least some minimal tests to enable troubleshooting the publishing workflows.
+    All data is from subregion 1711.
+    """
+    test_gdb = r'D:\dev\reach-processing-tools\resources\scratch\test_publish_data.gdb'
+    publish_gdb = os.path.join(arcpy.env.scratchFolder, 'scratch{}'.format(arcpy.ValidateTableName(uuid.uuid4())))
+
+    def test_publish(self):
+
+        # clean out the scratch directory
+        for dir_top, dir_list, object_list in arcpy.da.Walk(self.publish_gdb):
+            for object in object_list:
+                arcpy.Delete_management(os.path.join(dir_top, object))
+
+        print(self.publish_gdb)
+
+        scratch_gdb = publishing_utilities.create_publication_geodatabase(
+            analysis_gdb=self.test_gdb,
+            publication_gdb=self.publish_gdb
+        )
+
+        self.assertTrue(True)
+
+    def test_publish_20160328(self):
+
+        analysis_gdb = r'D:\dev\reach-processing-tools\resources\data_20160328.gdb'
+        output_gdb = r'D:\dev\reach-processing-tools\resources\publish_20160328.gdb'
+
+        if arcpy.Exists(output_gdb):
+            arcpy.Delete_management(output_gdb)
+
+        output_gdb = publishing_utilities.create_publication_geodatabase(
+            analysis_gdb=analysis_gdb,
+            publication_gdb=output_gdb
+        )
+
+        self.assertTrue(True)

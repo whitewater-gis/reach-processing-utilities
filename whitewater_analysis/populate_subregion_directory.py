@@ -22,7 +22,7 @@ from utilities import build_subregion_directory
 
 # variable for where to store the data
 # output_directory = r'R:\subregions'
-output_directory = r'G:\reach-processing\subregions'
+output_directory = r'D:\spatialData\nhd\subregions'
 
 # run the function
 build_subregion_directory(output_directory)
