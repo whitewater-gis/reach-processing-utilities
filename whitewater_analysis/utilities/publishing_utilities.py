@@ -21,7 +21,6 @@ purpose:    Provide the utilities to process and publish whitewater reach data.
 import os
 import numpy
 import arcpy
-import math
 
 
 def get_reach_id_field(feature_class):
@@ -269,7 +268,7 @@ def get_navigator_navigation_link(xy_tuple, destination_name=None):
     # if a name is provided for the destination, add the stop name to the string
     if destination_name:
         destination_name = destination_name.trim().replace(' ', '+')
-        stop_string += 'stopname={name}'.format(name=destination_name)
+        stop_string += '&stopname={name}'.format(name=destination_name)
 
     # create the full hyperlink string and return it
     return 'arcgis-navigator://?{stop}&travelmode=Rural+Driving+Time&navigate=true'.format(stop=stop_string)

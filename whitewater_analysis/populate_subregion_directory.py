@@ -23,6 +23,7 @@ from utilities import build_subregion_directory
 # variable for where to store the data
 # output_directory = r'R:\subregions'
 output_directory = r'D:\spatialData\nhd\subregions'
+huc4_feature_class = r'D:\dev\reach-processing-tools\resources\data_20160328.gdb\WBDHU4'
 
 # run the function
-build_subregion_directory(output_directory)
+build_subregion_directory(output_directory, huc4_feature_class)
