@@ -22,7 +22,7 @@ import os
 import zipfile
 import urllib
 import re
-
+import logging
 import arcpy
 
 
@@ -34,7 +34,7 @@ def download_nhd_subregion(huc4, output_directory):
     :return: String path to output file geodatabase.
     """
     # add a little information to the user
-    arcpy.AddMessage('Downloading data from the USGS for subregion {}.'.format(huc4))
+    logging.info('Downloading data from the USGS for subregion {}.'.format(huc4))
 
     # download the zipped resource
     temp_zip = urllib.urlretrieve('https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/HU4/' +
@@ -120,7 +120,7 @@ def create_output_geodatabase_and_hydro_net(nhd_gdb, output_directory):
     )[0]
 
     # report success
-    arcpy.AddMessage('Analysis database for subregion {} is ready.'.format(huc4))
+    logging.info('Analysis database for subregion {} is ready.'.format(huc4))
 
     # return the path to the final result
     return final_gdb
@@ -139,16 +139,26 @@ def get_nhd_subregion(huc4, subregion_directory):
     temp_directory = arcpy.env.scratchFolder
 
     # download and extract the NHD subregion from the USGS
-    staged_gdb = download_nhd_subregion(huc4, temp_directory)
+    try:
+        staged_gdb = download_nhd_subregion(huc4, temp_directory)
 
-    # create the output geodatabase and hydrology network for analysis
-    analysis_gdb = create_output_geodatabase_and_hydro_net(staged_gdb, subregion_directory)
+        # create the output geodatabase and hydrology network for analysis
+        analysis_gdb = create_output_geodatabase_and_hydro_net(staged_gdb, subregion_directory)
 
-    # delete the staging geodatabase
-    arcpy.Delete_management(staged_gdb)
+        # delete the staging geodatabase
+        arcpy.Delete_management(staged_gdb)
 
-    # return the path to the geodatabase
-    return analysis_gdb
+        # return the path to the geodatabase
+        return analysis_gdb
+
+    except Exception as e:
+
+        # clean out any returns from the error text
+        e = e.message.replace('\n', ' ').replace('\r', ' ')
+
+        # report what happened, and on which reach
+        logging.error('Could not process subregion {HU4}. Error Message: {err}'.format(
+            HU4=huc4, err=e))
 
 
 def build_subregion_directory_logic(subregion_directory, nhd_subregions):
@@ -162,8 +172,8 @@ def build_subregion_directory_logic(subregion_directory, nhd_subregions):
     regex = re.compile(r'(?P<huc4>\d{4})\.gdb')
     local_subregions = [regex.match(obj).group('huc4') for obj in os.listdir(subregion_directory) if regex.match(obj)]
 
-    # remove any subregions already downloaded from the nhd list
-    nhd_subregions = [huc4 for huc4 in nhd_subregions if huc4 not in local_subregions]
+    # remove any subregions already downloaded from the nhd list...sorted, because I am anal retentive like that
+    nhd_subregions = sorted([huc4 for huc4 in nhd_subregions if huc4 not in local_subregions])
 
     # iterate the nhd list and set up the subregion directory
     for huc4 in nhd_subregions:
@@ -178,6 +188,14 @@ def build_subregion_directory(subregion_directory, huc4_polygon_feature_class):
         NHD subregions.
     :return:
     """
+    # set up logging
+    logging.basicConfig(
+        filename=os.path.join(subregion_directory, 'nhd_data_log.log'),
+        format='%(asctime)s %(levelname)s %(message)s',
+        datefmt='%Y%m%d %H:%M:%S',
+        level=0
+    )
+
     # keep track of errors encountered
     error_count = 0
 
@@ -201,9 +219,8 @@ def build_subregion_directory(subregion_directory, huc4_polygon_feature_class):
             if error_count < 10:
 
                 # report something blew up
-                print('Attempting to recover from an error.')
-                print(e)
+                logging.error('Attempting to recover from an error. Error Message:{err}'.format(err=e))
 
             # otherwise
             else:
-                print(e)
+                logging.error(e)
