@@ -20,16 +20,16 @@ purpose:    Provide a tool wrapper for extracting and saving reach hydrolines.
 # import modules
 from arcpy import GetParameter
 from arcpy import GetParameterAsText
-from utilities import get_reach_line_fc
+from utilities import process_reaches
 
 from arcpy import AddMessage
 
 # collect input parameters and run functions
-get_reach_line_fc(
+process_reaches(
     access_fc=GetParameter(0),
     hydro_network=GetParameter(1),
     reach_hydroline_fc=GetParameterAsText(2),
-    reach_invalid_tbl=GetParameterAsText(3)
+    centroid_fc=GetParameterAsText(3)
 )
 
 AddMessage('starting processing')

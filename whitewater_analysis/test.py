@@ -97,14 +97,14 @@ class TestReachProcessing(unittest.TestCase):
     access_validate = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_validate_test'
 
     def test_process_reach(self):
-        result = reach_processing.process_reach(4, self.access_validate, hydro_net)
+        result = reach_processing.analyze_reach(4, self.access_validate, hydro_net)
         self.assertTrue(result['valid'])
 
     def test_get_reach_line_feature_class(self):
         milliseconds = int(time.time()*100)
         hydroline_fc = os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
         invalid_tbl = os.path.join(test_gdb, 'invalid_tbl{0}'.format(milliseconds))
-        reach_processing.get_reach_line_fc(self.access_validate, hydro_net, hydroline_fc, invalid_tbl)
+        reach_processing.process_reaches(self.access_validate, hydro_net, hydroline_fc, invalid_tbl)
         feature_count = int(arcpy.GetCount_management(hydroline_fc)[0])
         self.assertEqual(1, feature_count)
 

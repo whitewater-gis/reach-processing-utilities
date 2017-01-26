@@ -1,6 +1,6 @@
 # expose functions at package scope
 from reach_processing_utilities import (
-    get_reach_line_fc,
+    process_reaches,
     get_new_hydrolines,
     process_all_new_hydrolines
 )
