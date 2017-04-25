@@ -265,10 +265,11 @@ class Reach:
         """
         if not self._accesses_collected:
             raise Exception(
-                'Accesses have not been set yet. Please run the set_access_points_from_access_feature_class method.')
+                'Accesses have not been set yet. Please run the set_access_points_from_access_feature_class method.'
+            )
 
         if access_type is not None:
-            access_points = [point for point in self.points if access_type in point.tags]
+            access_points = [point for point in self.points if access_type in point.tags and 'access' in point.tags]
         else:
             access_points = [point for point in self.points if 'access' in point.tags]
 

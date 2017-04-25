@@ -110,10 +110,16 @@ class TestReach(TestCase):
         self.assertFalse(valid)
 
     def test_get_access_points(self):
-        self.fail()
+        reach = Reach(4)
+        reach.set_valid(access_fc, hydro_net)
+        access_points = reach.get_access_points()
+        self.assertEqual(2, len(access_points))
 
     def test_get_access_points_putin(self):
-        self.fail()
+        reach = Reach(4)
+        reach.set_valid(access_fc, hydro_net)
+        access_points = reach.get_access_points('putin')
+        self.assertEqual(1, len(access_points))
 
     # def test_set_centroid_geometry(self):
     #     self.fail()
