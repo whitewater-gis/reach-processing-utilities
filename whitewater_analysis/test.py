@@ -28,19 +28,14 @@ import json
 import uuid
 
 # import local modules
-# import utilities.nhd_data
-# import utilities.validate as validate
-import utilities.reach_processing_utilities as reach_processing
-# import utilities.update as update
-# import utilities.publishing_tools
-# import utilities.watershed as watershed
-import utilities.publishing_utilities as publishing_utilities
+from utilities import reach_processing_utilities
 
 # variables
 hydro_net = r'D:\dev\reach-processing-tools\test_data\1711.gdb\Hydrography\HYDRO_NET'
 huc4 = r'H:\reach-processing\aggregate\data_v3.gdb\WBDHU4'
 test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
+
 
 
 class TestCaseValidation(unittest.TestCase):

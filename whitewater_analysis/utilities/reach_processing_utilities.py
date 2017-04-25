@@ -60,17 +60,17 @@ class Reach:
         self.points = []
         self._accesses_collected = False
 
-    def set_access_points_from_access_feature_class(self, access_fc):
+    def set_access_points_from_access_feature_class(self, access_feature_class):
         """
         Get the access points from the access feature class for the reach.
-        :param access_fc: String path to the access feature class.
+        :param access_feature_class: String path to the access feature class.
         :return:
         """
         # for each of the three geometry types
         for access_type in ['putin', 'takeout', 'intermediate']:
 
             # get a list of geometry objects for each type
-            access_geometries = self._get_access_geometries_from_access_fc(access_fc, access_type)
+            access_geometries = self._get_access_geometries_from_access_fc(access_feature_class, access_type)
 
             # if any geometries were extracted
             if len(access_geometries):
@@ -104,7 +104,8 @@ class Reach:
         Ensure the specified reach has a putin and takeout.
         :return:
         """
-        if len(self.get_putin()) and len(self.get_putin()):
+        if self.get_putin() and self.get_takeout():
+            self.error = False
             return True
         else:
             self.error = True
@@ -131,7 +132,7 @@ class Reach:
         # create layer for NHD hydrolines
         hydroline_lyr = arcpy.MakeFeatureLayer_management(
             in_features=os.path.join(fds_path, arcpy.ListFeatureClasses('*Flowline')[0]),
-            out_layer='hydroline_lyr'
+            out_layer='hydroline_lyr{}'.format(uuid.uuid4())
         )
 
         # get the path to the accesses feature class
@@ -147,7 +148,7 @@ class Reach:
 
         # create an access layer
         access_lyr = arcpy.MakeFeatureLayer_management(
-            access_fc, 'putin_takeout_coincidence',
+            access_fc, 'putin_takeout_coincidence{}'.format(uuid.uuid4()),
             where_clause=sql_select
         )[0]
 
@@ -159,10 +160,11 @@ class Reach:
 
         # if successful, two access features should be selected, the put in and the takeout
         if int(arcpy.GetCount_management(access_lyr)[0]) == 2:
+            self.error = False
             return True
         else:
             self.error = True
-            self.notes = 'reach accesses are not coincident with hydrolines'
+            self.notes = 'reach putin and takeout are not coincident with hydrolines'
             return False
 
     def _validate_putin_upstream_from_takeout(self, access_fc, hydro_network):
@@ -191,8 +193,8 @@ class Reach:
         putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), get_where(self.reach_id, 'putin'))[0]
 
         # trace upstream from the takeout
-        group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream', takeout_geometry,
-                                                             'TRACE_UPSTREAM')[0]
+        group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream{}'.format(uuid.uuid4()),
+                                                             takeout_geometry, 'TRACE_UPSTREAM')[0]
 
         # extract the flowline layer with upstream features selected from the group layer
         hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
@@ -206,10 +208,11 @@ class Reach:
             # test if the putin is coincident with the hydroline geometry segment
             if putin_geometry.within(hydroline_geometry):
 
-                # if coincident, return...exiting function
+                # if coincident, good to go, and exiting function
+                self.error = False
                 return True
 
-        # if every hydroline segment is tested and none of them are coincident with the putin, error
+        # if every hydroline segment gets tested, and none of them are coincident with the putin, error
         self.error = True
         self.notes = 'reach put-in is not upstream from take-out'
         return False
@@ -231,15 +234,18 @@ class Reach:
         # the script running
         try:
 
-            # ensure the reach has a putin and a takeout
-            if not self._validate_has_putin_and_takeout():
+            # run all the tests
+            if (
+                self._validate_has_putin_and_takeout() and
+                self._validate_putin_takeout_coincidence(access_fc, hydro_network) and
+                self._validate_putin_upstream_from_takeout(access_fc, hydro_network)
+            ):
+                arcpy.AddMessage('{} is valid, and will be processed.'.format(self.reach_id))
+                return True
+            # if there is not an error
+            else:
                 return False
-            if not self._validate_putin_takeout_coincidence(access_fc, hydro_network):
-                return False
-            if not self._validate_putin_upstream_from_takeout(access_fc, hydro_network):
-                return False
-            arcpy.AddMessage('{} is valid, and will be processed.'.format(self.reach_id))
-            return True
+
 
         # if something goes wrong
         except Exception as e:
