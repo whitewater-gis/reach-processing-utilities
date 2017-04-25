@@ -29,7 +29,7 @@ import uuid
 
 # import local modules
 # import utilities.nhd_data
-import utilities.validate as validate
+# import utilities.validate as validate
 import utilities.reach_processing_utilities as reach_processing
 # import utilities.update as update
 # import utilities.publishing_tools

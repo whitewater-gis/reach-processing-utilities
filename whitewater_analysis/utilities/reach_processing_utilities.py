@@ -420,6 +420,10 @@ class Reach:
 
 
 class _FeatureCollection:
+    """
+    Parent template class for both hydropoints and hydrolines. This class is not intended to be used outside this module
+    autonomously.
+    """
 
     _name = 'placeholder'  # name for feature class to be overridden
     _row_name_list = []  # list of field names for the insert cursor
@@ -627,4 +631,3 @@ class FeatureCollectionCentroid(_FeatureCollection):
         arcpy.AssignDomainToField_management(in_table=centroid_fc, field_name='error', domain_name='boolean')
 
         return centroid_fc
-
