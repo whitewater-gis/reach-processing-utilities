@@ -58,6 +58,7 @@ class Reach:
         self.line_manual = None
         self.points = []
         self._accesses_collected = False
+        self._centroid_set = False
 
     def set_access_points_from_access_feature_class(self, access_feature_class):
         """
@@ -70,12 +71,12 @@ class Reach:
         def get_mean_coordinate(first_coordinate, second_coordinate):
             return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
 
+        # declare variables
+        putin_geometry = None
+        takeout_geometry = None
+
         # for each of the three geometry types
         for access_type in ['putin', 'takeout', 'intermediate']:
-
-            # declare variables
-            putin_geometry = None
-            takeout_geometry = None
 
             # get a list of geometry objects for each type
             access_geometries = self._get_access_geometries_from_access_fc(access_feature_class, access_type)
@@ -96,29 +97,32 @@ class Reach:
                     elif access_type == 'takeout':
                         takeout_geometry = access_geometry
 
-                # if there is at least one, a putin or a takeout
-                if putin_geometry or takeout_geometry:
+        # ensure the centroid has not already been set and if there is at least one, a putin or a takeout
+        if not self._centroid_set and (putin_geometry or takeout_geometry):
 
-                    # scaffold out a reach centroid point
-                    centroid_point = ReachPoint(self.reach_id)
-                    centroid_point.tags.append('centroid')
+            # scaffold out a reach centroid point
+            centroid_point = ReachPoint(self.reach_id)
+            centroid_point.tags.append('centroid')
 
-                    # if there is only one access, use this as the centroid
-                    if not putin_geometry:
-                        centroid_point.geometry = takeout_geometry
-                    elif not takeout_geometry:
-                        centroid_point.geometry = putin_geometry
+            # if there is only one access, use this as the centroid
+            if putin_geometry is None:
+                centroid_point.geometry = takeout_geometry
+            elif takeout_geometry is None:
+                centroid_point.geometry = putin_geometry
 
-                    # if there is both a putin and takeout, then use the mean coordinates as the centroid
-                    else:
-                        centroid_x = get_mean_coordinate(putin_geometry.geometry.centroid.X,
-                                                         takeout_geometry.geometry.centroid.X)
-                        centroid_y = get_mean_coordinate(putin_geometry.geometry.centroid.Y,
-                                                         takeout_geometry.geometry.centroid.Y)
-                        centroid_point.geometry = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
+            # if there is both a putin and takeout, then use the mean coordinates as the centroid
+            else:
+                centroid_x = get_mean_coordinate(putin_geometry.centroid.X,
+                                                 takeout_geometry.centroid.X)
+                centroid_y = get_mean_coordinate(putin_geometry.centroid.Y,
+                                                 takeout_geometry.centroid.Y)
+                centroid_point.geometry = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
 
-                    # add the reach point to the reach point list
-                    self.points.append(centroid_point)
+            # add the reach point to the reach point list
+            self.points.append(centroid_point)
+
+            # set the flat to true
+            self._centroid_set = True
 
         # set the flag to true
         self._accesses_collected = True
@@ -303,14 +307,18 @@ class Reach:
             provided tags to include the point in the returned list.
         :return: List of reach points fulfilling the request.
         """
+        # if no tags are provided, simply populate with all points
+        if point_tag_list is None:
+            points = self.points
+
         # if inclusive is true, and each point must contain all the supplied tags
-        if inclusive and len(self.points):
+        elif inclusive and len(self.points) and len(point_tag_list):
 
             # create a list of points with tags matching all the provided tags
             points = [point for point in self.points if set(point_tag_list).issubset(set(point.tags))]
 
         # if not inclusive, and each point must only contain one of the supplied tags
-        elif not inclusive and len(self.points):
+        elif not inclusive and len(self.points) and len(point_tag_list):
 
             # create a list of points with tags matching any of the provided tags
             points = [point for point in self.points if set(point_tag_list).intersection(set(point.tags))]
@@ -327,15 +335,21 @@ class Reach:
         :param access_type: Type of access, either putin, takeout, or intermediate.
         :return: List of hydropoints of the specified type if they exist, or none if it does not.
         """
-        # convert the access type provided to lower case and strip out any dashes or spaces
-        access_type = access_type.lower().replace('-', '').replace(' ', '')
 
-        # if the access type is not putin, takeout, or intermediate, raise error
-        if access_type not in ['putin', 'takeout', 'intermediate']:
-            raise Exception('Access type for get_access_points must be either putin, takeout, or intermediate')
-
+        # if an access type is specified
         if access_type is not None:
+
+            # convert the access type provided to lower case and strip out any dashes or spaces
+            access_type = access_type.lower().replace('-', '').replace(' ', '')
+
+            # if the access type is not putin, takeout, or intermediate, raise error
+            if access_type not in ['putin', 'takeout', 'intermediate']:
+                raise Exception('Access type for get_access_points must be either putin, takeout, or intermediate')
+
+            # retrieve the accesses from the reach points
             access_points = self._get_reach_points(['access', access_type])
+
+        # if an access type is not specified, just get the accesses
         else:
             access_points = [point for point in self.points if 'access' in point.tags]
 
@@ -365,15 +379,7 @@ class Reach:
         :param access_fc: Access feature class to find the accesses.
         :return:
         """
-        # if the centroid property has already been set, return it
-        centroid_point_list = [point for point in self.points if set('centroid').intersection(set(point.tags))]
-        if len(centroid_point_list):
-            return centroid_point_list[0]
-
-        # otherwise, create the reach point, and then return it
-        else:
-            self._create_centroid_reachpoint
-            return [point for point in self.points if set('centroid').intersection(set(point.tags))][0]
+        return self._get_reach_points(['centroid'])[0]
 
     def get_centroid_row(self):
         """

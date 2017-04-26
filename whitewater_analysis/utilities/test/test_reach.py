@@ -128,7 +128,7 @@ class TestReach(TestCase):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(access_fc)
         result = reach._get_reach_points()
-        self.assertEqual(2, len(result))
+        self.assertEqual(3, len(result))
 
     def test__get_access_points(self):
         reach = Reach(4)
@@ -147,18 +147,14 @@ class TestReach(TestCase):
         reach.set_access_points_from_access_feature_class(access_fc)
         putin = reach.get_putin_reachpoint()
         centroid = reach.get_centroid_reachpoint()
-        # x_delta = abs(putin.geometry.centroid.X - centroid.geometry.centroid.X)
-        # y_delta = abs(putin.geometry.centroid.Y - centroid.geometry.centroid.Y)
-        # total_delta = x_delta + y_delta
-        self.assertEqual(putin, centroid)
+        self.assertEqual(putin.geometry, centroid.geometry)
 
     def test_get_centroid_reachpoint_mean(self):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(access_fc)
         putin = reach.get_putin_reachpoint()
-        takeout = reach.get_takeout_reachpoint()
         centroid = reach.get_centroid_reachpoint()
-        self.assertNotEqual(putin, centroid)
+        self.assertNotEqual(putin.geometry, centroid.geometry)
 
     # def test_get_centroid_row(self):
     #     self.fail()
