@@ -61,12 +61,21 @@ class Reach:
 
     def set_access_points_from_access_feature_class(self, access_feature_class):
         """
-        Get the access points from the access feature class for the reach.
+        Get the access points from the access feature class for the reach, and also set the centroid point as well.
         :param access_feature_class: String path to the access feature class.
         :return:
         """
+
+        # helper to calculate the centroids
+        def get_mean_coordinate(first_coordinate, second_coordinate):
+            return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
+
         # for each of the three geometry types
         for access_type in ['putin', 'takeout', 'intermediate']:
+
+            # declare variables
+            putin_geometry = None
+            takeout_geometry = None
 
             # get a list of geometry objects for each type
             access_geometries = self._get_access_geometries_from_access_fc(access_feature_class, access_type)
@@ -80,6 +89,36 @@ class Reach:
                     access.tags = ['access', access_type]
                     access.geometry = access_geometry
                     self.points.append(access)
+
+                    # save the putin and takeout geometries
+                    if access_type == 'putin':
+                        putin_geometry = access_geometry
+                    elif access_type == 'takeout':
+                        takeout_geometry = access_geometry
+
+                # if there is at least one, a putin or a takeout
+                if putin_geometry or takeout_geometry:
+
+                    # scaffold out a reach centroid point
+                    centroid_point = ReachPoint(self.reach_id)
+                    centroid_point.tags.append('centroid')
+
+                    # if there is only one access, use this as the centroid
+                    if not putin_geometry:
+                        centroid_point.geometry = takeout_geometry
+                    elif not takeout_geometry:
+                        centroid_point.geometry = putin_geometry
+
+                    # if there is both a putin and takeout, then use the mean coordinates as the centroid
+                    else:
+                        centroid_x = get_mean_coordinate(putin_geometry.geometry.centroid.X,
+                                                         takeout_geometry.geometry.centroid.X)
+                        centroid_y = get_mean_coordinate(putin_geometry.geometry.centroid.Y,
+                                                         takeout_geometry.geometry.centroid.Y)
+                        centroid_point.geometry = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
+
+                    # add the reach point to the reach point list
+                    self.points.append(centroid_point)
 
         # set the flag to true
         self._accesses_collected = True
@@ -264,22 +303,14 @@ class Reach:
             provided tags to include the point in the returned list.
         :return: List of reach points fulfilling the request.
         """
-        # ensure at least the accesses have been collected first, and if they have, ensure the centroid is also set
-        if not self._accesses_collected:
-            raise Exception(
-                'Accesses have not been set yet. Please run the set_access_points_from_access_feature_class method.'
-            )
-        else:
-            self.get_centroid_reachpoint()
-
         # if inclusive is true, and each point must contain all the supplied tags
-        if inclusive:
+        if inclusive and len(self.points):
 
             # create a list of points with tags matching all the provided tags
             points = [point for point in self.points if set(point_tag_list).issubset(set(point.tags))]
 
         # if not inclusive, and each point must only contain one of the supplied tags
-        if not inclusive:
+        elif not inclusive and len(self.points):
 
             # create a list of points with tags matching any of the provided tags
             points = [point for point in self.points if set(point_tag_list).intersection(set(point.tags))]
@@ -335,45 +366,14 @@ class Reach:
         :return:
         """
         # if the centroid property has already been set, return it
-        centroid_point = self._get_reach_points(['centroid'])
-        if len(centroid_point):
-            return centroid_point[0]
+        centroid_point_list = [point for point in self.points if set('centroid').intersection(set(point.tags))]
+        if len(centroid_point_list):
+            return centroid_point_list[0]
 
-        # helper to calculate the centroids
-        def get_mean_coordinate(first_coordinate, second_coordinate):
-            return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
-
-        # get the putin and takeout geometries if they exist
-        putin_geometry = self.get_putin_reachpoint()
-        takeout_geometry = self.get_takeout_reachpoint()
-
-        # if there is at least one, a putin or a takeout
-        if putin_geometry or takeout_geometry:
-
-            # scaffold out a reach centroid point
-            centroid_point = ReachPoint(self.reach_id)
-            centroid_point.tags.append('centroid')
-
-            # if there is only one access, use this as the centroid
-            if not putin_geometry:
-                centroid_point.geometry = takeout_geometry
-            elif not takeout_geometry:
-                centroid_point.geometry = putin_geometry
-
-            # if there is both a putin and takeout, then use the mean coordinates as the centroid
-            else:
-                centroid_x = get_mean_coordinate(putin_geometry.geometry.centroid.X,
-                                                 takeout_geometry.geometry.centroid.X)
-                centroid_y = get_mean_coordinate(putin_geometry.geometry.centroid.Y,
-                                                 takeout_geometry.geometry.centroid.Y)
-                centroid_point.geometry = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
-
-            # use the geometry to create a reach point and add it to the reach point list
-            centroid_point.geometry = centroid_point.geometry
-            self.points.append(centroid_point)
-
-        # return the centroid
-        return centroid_point
+        # otherwise, create the reach point, and then return it
+        else:
+            self._create_centroid_reachpoint
+            return [point for point in self.points if set('centroid').intersection(set(point.tags))][0]
 
     def get_centroid_row(self):
         """

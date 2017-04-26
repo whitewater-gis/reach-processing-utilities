@@ -26,7 +26,7 @@ class TestReach(TestCase):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(access_fc)
         point_count = len(reach.points)
-        self.assertEqual(2, point_count)
+        self.assertEqual(3, point_count)
 
     def test_set_access_points_from_access_feature_class_assert_putin(self):
         reach = Reach(4)
@@ -42,9 +42,24 @@ class TestReach(TestCase):
         reach.set_access_points_from_access_feature_class(access_fc)
         takeout = False
         for point in reach.points:
-            if 'putin' in point.tags:
+            if 'takeout' in point.tags:
                 takeout = True
         self.assertTrue(takeout)
+
+    def test_set_access_points_from_access_feature_class_assert_centroid_single(self):
+        reach = Reach(1)
+        reach.set_access_points_from_access_feature_class(access_fc)
+        putin = None
+        centroid = None
+        for point in reach.points:
+            if 'putin' in point.tags:
+                putin = point
+                break
+        for point in reach.points:
+            if 'centroid' in point.tags:
+                centroid = point
+                break
+        self.assertEqual(putin.geometry, centroid.geometry)
 
     def test_get_putin_reachpoint_true(self):
         reach = Reach(4)
@@ -111,9 +126,9 @@ class TestReach(TestCase):
 
     def test__get_reach_points(self):
         reach = Reach(4)
-        reach.validate(access_fc, hydro_net)
+        reach.set_access_points_from_access_feature_class(access_fc)
         result = reach._get_reach_points()
-        self.assertLess(0, len(result))
+        self.assertEqual(2, len(result))
 
     def test__get_access_points(self):
         reach = Reach(4)
@@ -127,19 +142,19 @@ class TestReach(TestCase):
         access_points = reach.get_access_points('putin')
         self.assertEqual(1, len(access_points))
 
-    def test_get_centroid_geometry_single(self):
+    def test_get_centroid_reachpoint_single(self):
         reach = Reach(1)
-        reach.validate(access_fc, hydro_net)
+        reach.set_access_points_from_access_feature_class(access_fc)
         putin = reach.get_putin_reachpoint()
         centroid = reach.get_centroid_reachpoint()
-        x_delta = abs(putin.geometry.centroid.X - centroid.geometry.centroid.X)
-        y_delta = abs(putin.geometry.centroid.Y - centroid.geometry.centroid.Y)
-        total_delta = x_delta + y_delta
+        # x_delta = abs(putin.geometry.centroid.X - centroid.geometry.centroid.X)
+        # y_delta = abs(putin.geometry.centroid.Y - centroid.geometry.centroid.Y)
+        # total_delta = x_delta + y_delta
         self.assertEqual(putin, centroid)
 
-    def test_get_centroid_geometry_mean(self):
+    def test_get_centroid_reachpoint_mean(self):
         reach = Reach(4)
-        reach.validate(access_fc, hydro_net)
+        reach.set_access_points_from_access_feature_class(access_fc)
         putin = reach.get_putin_reachpoint()
         takeout = reach.get_takeout_reachpoint()
         centroid = reach.get_centroid_reachpoint()
