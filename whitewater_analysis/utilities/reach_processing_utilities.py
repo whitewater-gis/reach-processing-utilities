@@ -58,7 +58,6 @@ class Reach:
         self.line_manual = None
         self.points = []
         self._accesses_collected = False
-        self._centroid_set = False
 
     def set_access_points_from_access_feature_class(self, access_feature_class):
         """
@@ -98,7 +97,7 @@ class Reach:
                         takeout_geometry = access_geometry
 
         # ensure the centroid has not already been set and if there is at least one, a putin or a takeout
-        if not self._centroid_set and (putin_geometry or takeout_geometry):
+        if putin_geometry or takeout_geometry:
 
             # scaffold out a reach centroid point
             centroid_point = ReachPoint(self.reach_id)
@@ -120,9 +119,6 @@ class Reach:
 
             # add the reach point to the reach point list
             self.points.append(centroid_point)
-
-            # set the flat to true
-            self._centroid_set = True
 
         # set the flag to true
         self._accesses_collected = True
@@ -391,8 +387,11 @@ class Reach:
             error = 'true'
         else:
             error = 'false'
+
+        # get the centroid
+        centroid = self.get_centroid_reachpoint()
         return [self.reach_id, error, self.notes, self.abstract, self.description, self.difficulty,
-                self.difficulty_minimum, self.difficulty_maximum, self.difficulty_outlier, self._geometry_centroid]
+                self.difficulty_minimum, self.difficulty_maximum, self.difficulty_outlier, centroid.geometry]
 
     def get_hydroline_row(self):
         """
@@ -410,10 +409,9 @@ class Reach:
         """
         return Reach.set_hydroline_geometry(params.reach, params.access_fc, params.hydro_network)
 
-    @staticmethod
-    def set_hydroline_geometry(reach, access_fc, hydro_network):
+    def set_hydroline_geometry(self, access_fc, hydro_network):
         """
-        Set hydroline geometry for the reach using the putin and takeout access points identified using the reach id.
+        Set hydroline geometry for the reach using the putin and takeout access points identified using the self id.
         :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
                           takeout. These fields must store the reach id for the point role as a putin or takeout.
         :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology
@@ -421,10 +419,10 @@ class Reach:
         :return: Polyline Geometry object representing the reach hydroline.
         """
         # if the reach is not manaully digitized
-        if not reach.line_manual:
+        if not self.line_manual:
 
             # run validation tests
-            valid = reach.validate(access_fc, hydro_network)
+            valid = self.validate(access_fc, hydro_network)
 
             # if the reach validates
             if valid:
@@ -433,8 +431,8 @@ class Reach:
                 try:
 
                     # get putin and takeout geometry
-                    takeout_geometry = reach.get_putin_reachpoint()
-                    putin_geometry = reach.get_takeout_reachpoint()
+                    takeout_geometry = (self.get_putin_reachpoint()).geometry
+                    putin_geometry = (self.get_takeout_reachpoint()).geometry
 
                     # trace network connecting the putin and the takeout, this returns all intersecting line segments
                     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
@@ -452,8 +450,9 @@ class Reach:
                     # not work on a geometry list
                     fc_name = _get_valid_uuid('in_memory')
                     for access in [putin_geometry, takeout_geometry]:
-                        hydroline = arcpy.SplitLineAtPoint_management(hydroline, access,
-                                                                      'in_memory/split{}'.format(fc_name))[0]
+                        hydroline = arcpy.SplitLineAtPoint_management(
+                            hydroline, access, 'in_memory/split{}'.format(_get_valid_uuid('in_memory'))
+                        )[0]
 
                     # trim ends of reach off above and below the putin and takeout
                     arcpy.TrimLine_edit(hydroline)
@@ -462,11 +461,11 @@ class Reach:
                     hydroline_geometry = [row[0] for row in arcpy.da.SearchCursor(hydroline, 'SHAPE@')]
 
                     # assemble save results
-                    reach.error = False
-                    reach.geometry_line = hydroline_geometry
+                    self.error = False
+                    self.geometry_line = hydroline_geometry
 
-                    # return the reach
-                    return reach
+                    # return the reach hydroline geometry
+                    return self.geometry_line
 
                 # if something bombs, at least record what the heck happened and keep from crashing the entire run
                 except Exception as e:
@@ -477,14 +476,14 @@ class Reach:
                     # report error to front end
                     arcpy.AddWarning(
                         'Although {} passed validation, it still bombed the process. ERROR: {}'.format(
-                            reach.reach_id, message))
+                            self.reach_id, message))
 
                     # populate the error properties
-                    reach.error = True
-                    reach.notes = message
+                    self.error = True
+                    self.notes = message
 
-                    # return the reach
-                    return reach
+                    # return nothing since it blew up
+                    return None
 
 
 class _FeatureCollection:
@@ -596,11 +595,13 @@ class FeatureCollectionHydroline(_FeatureCollection):
     @staticmethod
     def process_reaches(access_fc, hydro_network, output_workspace):
         """
-        Create a hydropoint and hydroline feature class using an access feature class with putins and takeouts to determine
-            the hydropoints from the averaged centroid, and trace the USGS NHD hydrolines to get the hydrolines.
-        :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
-                          takeout. These fields must store the reach id for the point role as a putin or takeout.
-        :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset.
+        Create a hydropoint and hydroline feature class using an access feature class with putins and takeouts to 
+            determine the hydropoints from the averaged centroid, and trace the USGS NHD hydrolines to get the
+            hydrolines.
+        :param access_fc: The point feature class for accesses. There must be an attribute named putin and another
+            named takeout. These fields must store the reach id for the point role as a putin or takeout.
+        :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology
+            Dataset.
         :param output_workspace: File geodatabase where the data will be stored.
         :return:
         """

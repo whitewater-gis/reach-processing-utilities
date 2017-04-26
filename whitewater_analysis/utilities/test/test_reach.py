@@ -67,7 +67,11 @@ class TestReach(TestCase):
         putin = reach.get_putin_reachpoint()
         self.assertTrue(putin)
 
-    # TODO: get putin false
+    def test_get_takeout_reachpoint_false(self):
+        reach = Reach(1)
+        reach.set_access_points_from_access_feature_class(access_fc)
+        takeout = reach.get_takeout_reachpoint()
+        self.assertEqual(None, takeout)
 
     def test_get_takeout_reachpoint_true(self):
         reach = Reach(4)
@@ -156,14 +160,20 @@ class TestReach(TestCase):
         centroid = reach.get_centroid_reachpoint()
         self.assertNotEqual(putin.geometry, centroid.geometry)
 
-    # def test_get_centroid_row(self):
-    #     self.fail()
-    #
+    def test_get_centroid_row(self):
+        reach = Reach(4)
+        reach.validate(access_fc, hydro_net)
+        row = reach.get_centroid_row()
+        self.assertEqual('4', row[0])
+
+    def test_set_hydroline_geometry_valid(self):
+        reach = Reach(4)
+        reach.set_hydroline_geometry(access_fc, hydro_net)
+        self.assertNotEqual(None, reach.geometry_line)
+
     # def test_get_hydroline_row(self):
     #     self.fail()
     #
     # def test_set_hydroline_geometry_multithreaded(self):
     #     self.fail()
     #
-    # def test_set_hydroline_geometry(self):
-    #     self.fail()
