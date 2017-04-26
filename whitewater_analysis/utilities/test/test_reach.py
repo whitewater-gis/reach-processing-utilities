@@ -46,18 +46,18 @@ class TestReach(TestCase):
                 takeout = True
         self.assertTrue(takeout)
 
-    def test_get_putin_true(self):
+    def test_get_putin_reachpoint_true(self):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(access_fc)
-        putin = reach.get_putin()
+        putin = reach.get_putin_reachpoint()
         self.assertTrue(putin)
 
     # TODO: get putin false
 
-    def test_get_takeout_true(self):
+    def test_get_takeout_reachpoint_true(self):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(access_fc)
-        takeout = reach.get_takeout()
+        takeout = reach.get_takeout_reachpoint()
         self.assertTrue(takeout)
 
     # TODO: get takeout false
@@ -99,31 +99,52 @@ class TestReach(TestCase):
         result = reach._validate_putin_upstream_from_takeout(access_fc, hydro_net)
         self.assertFalse(result)
 
-    def test_set_valid_true(self):
+    def test_validate_true(self):
         reach = Reach(4)
-        valid = reach.set_valid(access_fc, hydro_net)
+        valid = reach.validate(access_fc, hydro_net)
         self.assertTrue(valid)
 
-    def test_set_valid_false(self):
+    def test_validate_false(self):
         reach = Reach(3)
-        valid = reach.set_valid(access_fc, hydro_net)
+        valid = reach.validate(access_fc, hydro_net)
         self.assertFalse(valid)
 
-    def test_get_access_points(self):
+    def test__get_reach_points(self):
         reach = Reach(4)
-        reach.set_valid(access_fc, hydro_net)
+        reach.validate(access_fc, hydro_net)
+        result = reach._get_reach_points()
+        self.assertLess(0, len(result))
+
+    def test__get_access_points(self):
+        reach = Reach(4)
+        reach.validate(access_fc, hydro_net)
         access_points = reach.get_access_points()
         self.assertEqual(2, len(access_points))
 
     def test_get_access_points_putin(self):
         reach = Reach(4)
-        reach.set_valid(access_fc, hydro_net)
+        reach.validate(access_fc, hydro_net)
         access_points = reach.get_access_points('putin')
         self.assertEqual(1, len(access_points))
 
-    # def test_set_centroid_geometry(self):
-    #     self.fail()
-    #
+    def test_get_centroid_geometry_single(self):
+        reach = Reach(1)
+        reach.validate(access_fc, hydro_net)
+        putin = reach.get_putin_reachpoint()
+        centroid = reach.get_centroid_reachpoint()
+        x_delta = abs(putin.geometry.centroid.X - centroid.geometry.centroid.X)
+        y_delta = abs(putin.geometry.centroid.Y - centroid.geometry.centroid.Y)
+        total_delta = x_delta + y_delta
+        self.assertEqual(putin, centroid)
+
+    def test_get_centroid_geometry_mean(self):
+        reach = Reach(4)
+        reach.validate(access_fc, hydro_net)
+        putin = reach.get_putin_reachpoint()
+        takeout = reach.get_takeout_reachpoint()
+        centroid = reach.get_centroid_reachpoint()
+        self.assertNotEqual(putin, centroid)
+
     # def test_get_centroid_row(self):
     #     self.fail()
     #

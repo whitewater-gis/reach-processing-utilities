@@ -54,7 +54,6 @@ class Reach:
         self.difficulty_minimum = None
         self.difficulty_maximum = None
         self.difficulty_outlier = None
-        self.geometry_centroid = None
         self.geometry_line = None
         self.line_manual = None
         self.points = []
@@ -104,7 +103,7 @@ class Reach:
         Ensure the specified reach has a putin and takeout.
         :return:
         """
-        if self.get_putin() and self.get_takeout():
+        if self.get_putin_reachpoint() and self.get_takeout_reachpoint():
             self.error = False
             return True
         else:
@@ -217,7 +216,7 @@ class Reach:
         self.notes = 'reach put-in is not upstream from take-out'
         return False
 
-    def set_valid(self, access_fc, hydro_network):
+    def validate(self, access_fc, hydro_network):
         """
         Make sure the reach is valid.
         :param access_fc: The point feature class for accesses. There must be an attribute named putin and another
@@ -257,19 +256,55 @@ class Reach:
             arcpy.AddMessage('{} caused an unspecified error - '.format(self.reach_id, message))
             return False
 
+    def _get_reach_points(self, point_tag_list=None, inclusive=True):
+        """
+        Retrieve reach points using tags.
+        :param point_tag_list: List of tags to use for retrieving reach points.
+        :param inclusive: Boolean indicating if all supplied tags must be true for every point, or just one of the
+            provided tags to include the point in the returned list.
+        :return: List of reach points fulfilling the request.
+        """
+        # ensure at least the accesses have been collected first, and if they have, ensure the centroid is also set
+        if not self._accesses_collected:
+            raise Exception(
+                'Accesses have not been set yet. Please run the set_access_points_from_access_feature_class method.'
+            )
+        else:
+            self.get_centroid_reachpoint()
+
+        # if inclusive is true, and each point must contain all the supplied tags
+        if inclusive:
+
+            # create a list of points with tags matching all the provided tags
+            points = [point for point in self.points if set(point_tag_list).issubset(set(point.tags))]
+
+        # if not inclusive, and each point must only contain one of the supplied tags
+        if not inclusive:
+
+            # create a list of points with tags matching any of the provided tags
+            points = [point for point in self.points if set(point_tag_list).intersection(set(point.tags))]
+
+        # return an empty list if there are no points or the created list of points if any found
+        if len(points):
+            return points
+        else:
+            return []
+
     def get_access_points(self, access_type=None):
         """
         Get a list of hydropoints based on the access type specified.
         :param access_type: Type of access, either putin, takeout, or intermediate.
         :return: List of hydropoints of the specified type if they exist, or none if it does not.
         """
-        if not self._accesses_collected:
-            raise Exception(
-                'Accesses have not been set yet. Please run the set_access_points_from_access_feature_class method.'
-            )
+        # convert the access type provided to lower case and strip out any dashes or spaces
+        access_type = access_type.lower().replace('-', '').replace(' ', '')
+
+        # if the access type is not putin, takeout, or intermediate, raise error
+        if access_type not in ['putin', 'takeout', 'intermediate']:
+            raise Exception('Access type for get_access_points must be either putin, takeout, or intermediate')
 
         if access_type is not None:
-            access_points = [point for point in self.points if access_type in point.tags and 'access' in point.tags]
+            access_points = self._get_reach_points(['access', access_type])
         else:
             access_points = [point for point in self.points if 'access' in point.tags]
 
@@ -278,47 +313,67 @@ class Reach:
         else:
             return []
 
-    def get_putin(self):
+    def get_putin_reachpoint(self):
         putin_list = self.get_access_points('putin')
         if len(putin_list):
             return putin_list[0]
         else:
             return None
 
-    def get_takeout(self):
+    def get_takeout_reachpoint(self):
         takeout_list = self.get_access_points('takeout')
         if len(takeout_list):
             return takeout_list[0]
         else:
             return None
 
-    def set_centroid_geometry(self, access_fc):
+    def get_centroid_reachpoint(self):
         """
         From two geometry objects, one for the location of the putin and another for the location of the takeout,
         calculate the middle, halfway between the two, to use as a marker, the centroid for the reach.
         :param access_fc: Access feature class to find the accesses.
         :return:
         """
-        # set the access geometry properties
-        self.set_access_points_from_access_feature_class(access_fc)
+        # if the centroid property has already been set, return it
+        centroid_point = self._get_reach_points(['centroid'])
+        if len(centroid_point):
+            return centroid_point[0]
 
         # helper to calculate the centroids
         def get_mean_coordinate(first_coordinate, second_coordinate):
             return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
 
         # get the putin and takeout geometries if they exist
-        putin_geometry = self.get_putin()
-        takeout_geometry = self.get_takeout()
+        putin_geometry = self.get_putin_reachpoint()
+        takeout_geometry = self.get_takeout_reachpoint()
 
-        # if there is only a putin or takeout, just use this as the centroid
-        if not putin_geometry:
-            self.geometry_centroid = takeout_geometry
-        elif not takeout_geometry:
-            self.geometry_centroid = putin_geometry
-        else:
-            centroid_x = get_mean_coordinate(putin_geometry.centroid.X, takeout_geometry.centroid.X)
-            centroid_y = get_mean_coordinate(putin_geometry.centroid.Y, takeout_geometry.centroid.Y)
-            self.geometry_centroid = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
+        # if there is at least one, a putin or a takeout
+        if putin_geometry or takeout_geometry:
+
+            # scaffold out a reach centroid point
+            centroid_point = ReachPoint(self.reach_id)
+            centroid_point.tags.append('centroid')
+
+            # if there is only one access, use this as the centroid
+            if not putin_geometry:
+                centroid_point.geometry = takeout_geometry
+            elif not takeout_geometry:
+                centroid_point.geometry = putin_geometry
+
+            # if there is both a putin and takeout, then use the mean coordinates as the centroid
+            else:
+                centroid_x = get_mean_coordinate(putin_geometry.geometry.centroid.X,
+                                                 takeout_geometry.geometry.centroid.X)
+                centroid_y = get_mean_coordinate(putin_geometry.geometry.centroid.Y,
+                                                 takeout_geometry.geometry.centroid.Y)
+                centroid_point.geometry = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
+
+            # use the geometry to create a reach point and add it to the reach point list
+            centroid_point.geometry = centroid_point.geometry
+            self.points.append(centroid_point)
+
+        # return the centroid
+        return centroid_point
 
     def get_centroid_row(self):
         """
@@ -331,7 +386,7 @@ class Reach:
         else:
             error = 'false'
         return [self.reach_id, error, self.notes, self.abstract, self.description, self.difficulty,
-                self.difficulty_minimum, self.difficulty_maximum, self.difficulty_outlier, self.geometry_centroid]
+                self.difficulty_minimum, self.difficulty_maximum, self.difficulty_outlier, self._geometry_centroid]
 
     def get_hydroline_row(self):
         """
@@ -363,7 +418,7 @@ class Reach:
         if not reach.line_manual:
 
             # run validation tests
-            valid = reach.set_valid(access_fc, hydro_network)
+            valid = reach.validate(access_fc, hydro_network)
 
             # if the reach validates
             if valid:
@@ -372,8 +427,8 @@ class Reach:
                 try:
 
                     # get putin and takeout geometry
-                    takeout_geometry = reach.get_putin()
-                    putin_geometry = reach.get_takeout()
+                    takeout_geometry = reach.get_putin_reachpoint()
+                    putin_geometry = reach.get_takeout_reachpoint()
 
                     # trace network connecting the putin and the takeout, this returns all intersecting line segments
                     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
@@ -586,7 +641,7 @@ class FeatureCollectionHydroline(_FeatureCollection):
 
             # for set the centroid geometry for each reach instance
             for reach_instance in reach_instance_chunk:
-                reach_instance.set_centroid_geometry(access_fc)
+                reach_instance.get_centroid_reachpoint
 
             # factor the reach instance chunk into a list of hydroline processing parameter object instances
             params_list = [HydrolineProcessingParams(reach) for reach in reach_instance_chunk]
