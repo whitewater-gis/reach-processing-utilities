@@ -36,10 +36,15 @@ def _get_valid_uuid(workspace):
 
 class ReachPoint:
 
-    def __init__(self, reach_id):
+    def __init__(self, reach_id, tags=None, geometry=None):
         self.reach_id = reach_id
-        self.tags = []
-        self.geometry = None
+        if tags is None:
+            self.tags = []
+        elif type(tags) != list:
+            raise Exception('ReachPoint tags must be a list of strings.')
+        else:
+            self.tags = tags
+        self.geometry = geometry
 
 
 class Reach:
@@ -59,6 +64,16 @@ class Reach:
         self.points = []
         self._accesses_collected = False
 
+    @staticmethod
+    def _get_mean_coordinate(first_coordinate, second_coordinate):
+        """
+        Helper method to get the mean between two coordinates - regardless of which one is larger.
+        :param first_coordinate: Yes, the first coordinate.
+        :param second_coordinate: No kidding, the second coordinate.
+        :return: Floating point mean between the coordinates.
+        """
+        return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
+
     def set_access_points_from_access_feature_class(self, access_feature_class):
         """
         Get the access points from the access feature class for the reach, and also set the centroid point as well.
@@ -66,15 +81,11 @@ class Reach:
         :return:
         """
 
-        # helper to calculate the centroids
-        def get_mean_coordinate(first_coordinate, second_coordinate):
-            return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
-
         # declare variables
         putin_geometry = None
         takeout_geometry = None
 
-        # for each of the three geometry types
+        # for each of the three access types
         for access_type in ['putin', 'takeout', 'intermediate']:
 
             # get a list of geometry objects for each type
@@ -83,12 +94,9 @@ class Reach:
             # if any geometries were extracted
             if len(access_geometries):
 
-                # itereate each geometry, create a hydropoint, and add this hydropoint to the list
+                # iterate each geometry, create a reach point, and add this reach point to the list
                 for access_geometry in access_geometries:
-                    access = ReachPoint(self.reach_id)
-                    access.tags = ['access', access_type]
-                    access.geometry = access_geometry
-                    self.points.append(access)
+                    self.points.append(ReachPoint(self.reach_id, ['access', access_type], access_geometry))
 
                     # save the putin and takeout geometries
                     if access_type == 'putin':
@@ -111,9 +119,9 @@ class Reach:
 
             # if there is both a putin and takeout, then use the mean coordinates as the centroid
             else:
-                centroid_x = get_mean_coordinate(putin_geometry.centroid.X,
+                centroid_x = self._get_mean_coordinate(putin_geometry.centroid.X,
                                                  takeout_geometry.centroid.X)
-                centroid_y = get_mean_coordinate(putin_geometry.centroid.Y,
+                centroid_y = self._get_mean_coordinate(putin_geometry.centroid.Y,
                                                  takeout_geometry.centroid.Y)
                 centroid_point.geometry = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
 
@@ -448,7 +456,6 @@ class Reach:
                     # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles
                     # above and below the putin and takeout and saving as in memory feature class since trim line does
                     # not work on a geometry list
-                    fc_name = _get_valid_uuid('in_memory')
                     for access in [putin_geometry, takeout_geometry]:
                         hydroline = arcpy.SplitLineAtPoint_management(
                             hydroline, access, 'in_memory/split{}'.format(_get_valid_uuid('in_memory'))
@@ -486,7 +493,7 @@ class Reach:
                     return None
 
 
-class _FeatureCollection:
+class _FeatureCollection(object):
     """
     Parent template class for both hydropoints and hydrolines. This class is not intended to be used outside this module
     autonomously.
@@ -593,7 +600,7 @@ class FeatureCollectionHydroline(_FeatureCollection):
             return False
 
     @staticmethod
-    def process_reaches(access_fc, hydro_network, output_workspace):
+    def process_reaches_multithreaded(access_fc, hydro_network, output_workspace):
         """
         Create a hydropoint and hydroline feature class using an access feature class with putins and takeouts to 
             determine the hydropoints from the averaged centroid, and trace the USGS NHD hydrolines to get the

@@ -1,8 +1,6 @@
 # import modules
 import json
-
 import arcpy
-
 import requests
 
 
