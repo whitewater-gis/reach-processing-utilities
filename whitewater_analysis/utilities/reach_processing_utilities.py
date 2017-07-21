@@ -59,20 +59,26 @@ class Reach:
         self.difficulty_minimum = None
         self.difficulty_maximum = None
         self.difficulty_outlier = None
-        self.geometry_line = None
-        self.line_manual = None
+        self.hydroline = None
+        self.digitize = None
         self.points = []
         self._accesses_collected = False
 
     @staticmethod
-    def _get_mean_coordinate(first_coordinate, second_coordinate):
+    def _get_mean_point_geometry(first_point_geometry, second_point_geometry):
         """
-        Helper method to get the mean between two coordinates - regardless of which one is larger.
-        :param first_coordinate: Yes, the first coordinate.
-        :param second_coordinate: No kidding, the second coordinate.
-        :return: Floating point mean between the coordinates.
+        Helper method to get the mean point between two points - useful for calculating the centroid.
+        :param first_point_geometry: ArcPy Point geometry.
+        :param second_point_geometry: ArcPy Point geometry.
+        :return: ArcPy point geometry mean between the two input geometries.
         """
-        return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
+        def _get_mean_coordinate(first_coordinate, second_coordinate):
+            return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
+
+        x = _get_mean_coordinate(first_point_geometry.geometry.centroid.X, second_point_geometry.geometry.centroid.X)
+        y = _get_mean_coordinate(first_point_geometry.geometry.centroid.Y, second_point_geometry.geometry.centroid.Y)
+
+        return arcpy.Geometry('POINT', arcpy.Point(x, y))
 
     def set_access_points_from_access_feature_class(self, access_feature_class):
         """
@@ -80,10 +86,6 @@ class Reach:
         :param access_feature_class: String path to the access feature class.
         :return:
         """
-
-        # declare variables
-        putin_geometry = None
-        takeout_geometry = None
 
         # for each of the three access types
         for access_type in ['putin', 'takeout', 'intermediate']:
@@ -98,38 +100,38 @@ class Reach:
                 for access_geometry in access_geometries:
                     self.points.append(ReachPoint(self.reach_id, ['access', access_type], access_geometry))
 
-                    # save the putin and takeout geometries
-                    if access_type == 'putin':
-                        putin_geometry = access_geometry
-                    elif access_type == 'takeout':
-                        takeout_geometry = access_geometry
-
-        # ensure the centroid has not already been set and if there is at least one, a putin or a takeout
-        if putin_geometry or takeout_geometry:
-
-            # scaffold out a reach centroid point
-            centroid_point = ReachPoint(self.reach_id)
-            centroid_point.tags.append('centroid')
-
-            # if there is only one access, use this as the centroid
-            if putin_geometry is None:
-                centroid_point.geometry = takeout_geometry
-            elif takeout_geometry is None:
-                centroid_point.geometry = putin_geometry
-
-            # if there is both a putin and takeout, then use the mean coordinates as the centroid
-            else:
-                centroid_x = self._get_mean_coordinate(putin_geometry.centroid.X,
-                                                 takeout_geometry.centroid.X)
-                centroid_y = self._get_mean_coordinate(putin_geometry.centroid.Y,
-                                                 takeout_geometry.centroid.Y)
-                centroid_point.geometry = arcpy.Geometry('POINT', arcpy.Point(centroid_x, centroid_y))
-
-            # add the reach point to the reach point list
-            self.points.append(centroid_point)
+        # set the centroid
+        self.set_centroid()
 
         # set the flag to true
         self._accesses_collected = True
+
+    def set_centroid(self):
+        """
+        If possible, set the centroid for the reach from the accesses contained in the reach points.
+        :return:
+        """
+        # get the putin and takeout reach points from the list
+        putin = self.get_putin_reachpoint()
+        takeout = self.get_takeout_reachpoint()
+
+        # scaffold out a reach centroid point
+        centroid = ReachPoint(self.reach_id, ['centroid'])
+
+        # if only one access, then set the centroid to this, but if neither, bingo out
+        if takeout is None and putin is None:
+            return
+        elif takeout is None:
+            centroid.geometry = putin.geometry
+        elif putin is None:
+            centroid.geometry = takeout.geometry
+
+        # if there is both a putin and takeout, then use the mean coordinates as the centroid
+        else:
+            centroid.geometry = self._get_mean_point_geometry(putin.geometry, takeout.geometry)
+
+        # add the reach point to the reach point list
+        self.points.append(centroid)
 
     def _get_access_geometries_from_access_fc(self, access_fc, access_type):
         """
@@ -406,7 +408,7 @@ class Reach:
         Get a hydroline row for writing out to a feature class.
         :return: Hydroline row as a list.
         """
-        return [self.reach_id, self.line_manual, self.geometry_line]
+        return [self.reach_id, self.digitize, self.hydroline]
 
     @staticmethod
     def set_hydroline_geometry_multithreaded(params):
@@ -427,7 +429,7 @@ class Reach:
         :return: Polyline Geometry object representing the reach hydroline.
         """
         # if the reach is not manaully digitized
-        if not self.line_manual:
+        if not self.digitize:
 
             # run validation tests
             valid = self.validate(access_fc, hydro_network)
@@ -469,10 +471,10 @@ class Reach:
 
                     # assemble save results
                     self.error = False
-                    self.geometry_line = hydroline_geometry
+                    self.hydroline = hydroline_geometry
 
                     # return the reach hydroline geometry
-                    return self.geometry_line
+                    return self.hydroline
 
                 # if something bombs, at least record what the heck happened and keep from crashing the entire run
                 except Exception as e:

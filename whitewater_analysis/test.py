@@ -28,14 +28,14 @@ import json
 import uuid
 
 # import local modules
-from utilities import reach_processing_utilities
+from utilities.reach_processing_utilities import *
 
 # variables
 hydro_net = r'D:\dev\reach-processing-tools\test_data\1711.gdb\Hydrography\HYDRO_NET'
 huc4 = r'H:\reach-processing\aggregate\data_v3.gdb\WBDHU4'
 test_gdb = arcpy.env.scratchGDB
 test_dir = arcpy.env.scratchFolder
-
+test_reach_id = 2204
 
 
 class TestCaseValidation(unittest.TestCase):
@@ -45,43 +45,53 @@ class TestCaseValidation(unittest.TestCase):
     access_validate = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_validate_test'
 
     def test_validate_has_putin_and_takeout_false(self):
-        result = validate._validate_has_putin_and_takeout(1, self.access_validate)
+        reach = Reach(1)
+        result = reach._validate_has_putin_and_takeout()
         self.assertFalse(result)
 
     def test_validate_has_putin_and_takeout_true(self):
-        result = validate._validate_has_putin_and_takeout(4, self.access_validate)
+        reach = Reach(4)
+        result = reach._validate_has_putin_and_takeout()
         self.assertTrue(result)
 
     def test_validate_reach_invalid_has_putin_and_takeout(self):
-        result = validate.validate_reach(1, self.access_validate, hydro_net)
-        self.assertFalse(result['valid'])
+        reach = Reach(1)
+        result = reach.validate(self.access_validate, hydro_net)
+        self.assertFalse(result)
 
     def test_validate_putin_takeout_coincidence_false(self):
-        result = validate._validate_putin_takeout_conicidence(2, self.access_validate, hydro_net)
+        reach = Reach(2)
+        result = reach._validate_putin_takeout_coincidence(self.access_validate, hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_takeout_coincidence_true(self):
-        result = validate._validate_putin_takeout_conicidence(4, self.access_validate, hydro_net)
+        reach = Reach(4)
+        result = reach._validate_putin_takeout_coincidence(self.access_validate, hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_takeout_coincidence(self):
-        result = validate.validate_reach(2, self.access_validate, hydro_net)
-        self.assertFalse(result['valid'])
+        reach = Reach(2)
+        result = reach.validate(self.access_validate, hydro_net)
+        self.assertFalse(result)
 
     def test_validate_putin_upstream_from_takeout_false(self):
-        result = validate._validate_putin_upstream_from_takeout(3, self.access_validate, hydro_net)
+        reach = Reach(3)
+        result = reach._validate_putin_upstream_from_takeout(self.access_validate, hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_upstream_from_takeout_true(self):
-        result = validate._validate_putin_upstream_from_takeout(4, self.access_validate, hydro_net)
+        reach = Reach(4)
+        result = reach._validate_putin_upstream_from_takeout(self.access_validate, hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_upstream_from_takeout(self):
-        result = validate.validate_reach(2, self.access_validate, hydro_net)
+        reach = Reach(2)
+        result = reach.validate(self.access_validate, hydro_net)
         self.assertFalse(result['valid'])
 
     def test_validate_reach_valid(self):
-        result = validate.validate_reach(4, self.access_validate, hydro_net)
+        reach = Reach(4)
+        result = reach.validate(self.access_validate, hydro_net)
         self.assertTrue(result['valid'])
 
 

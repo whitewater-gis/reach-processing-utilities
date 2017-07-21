@@ -169,7 +169,7 @@ class TestReach(TestCase):
     def test_set_hydroline_geometry_valid(self):
         reach = Reach(4)
         reach.set_hydroline_geometry(access_fc, hydro_net)
-        self.assertNotEqual(None, reach.geometry_line)
+        self.assertNotEqual(None, reach.hydroline)
 
     # def test_get_hydroline_row(self):
     #     self.fail()
