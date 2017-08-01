@@ -38,6 +38,32 @@ test_dir = arcpy.env.scratchFolder
 test_reach_id = 2204
 
 
+class TestCaseDownload2204(unittest.TestCase):
+    """
+    Validate getting a new reach from American Whitewater.
+    """
+    reach_id = 2204
+    reach = Reach(2204)
+    reach.download()
+
+    def test_name(self):
+        self.assertEqual(self.reach.name, 'Above Brandeberry Creek to Hyas Creek')
+
+    def test_difficulty_combined(self):
+        self.assertEqual(self.reach.difficulty.maximum, 'V')
+
+    def test_difficulty_maximum(self):
+        self.assertEqual(self.reach.difficulty.combined, 'II-V')
+
+    def test_point_putin_coordinates(self):
+        putin_coordinates = [point.coordinates for point in self.reach.points if 'putin' in point.tags][0]
+        self.assertEqual(putin_coordinates)
+
+    def test_point_takeout_coordinates(self):
+        takeout_coordinates = [point.coordinates for point in self.reach.points if 'takeout' in point.tags][0]
+        self.assertEqual(takeout_coordinates)
+
+
 class TestCaseValidation(unittest.TestCase):
     """
     Test validation functions with data created to break in the right ways.
@@ -102,13 +128,19 @@ class TestReachProcessing(unittest.TestCase):
     access_validate = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_validate_test'
 
     def test_process_reach(self):
-        result = reach_processing.analyze_reach(4, self.access_validate, hydro_net)
-        self.assertTrue(result['valid'])
+        reach = Reach(4)
+        result = reach.validate(self.access_validate, hydro_net)
+        self.assertTrue(result)
 
     def test_get_reach_line_feature_class(self):
+
+        # create testing output feature class paths
         milliseconds = int(time.time()*100)
         hydroline_fc = os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
-        invalid_tbl = os.path.join(test_gdb, 'invalid_tbl{0}'.format(milliseconds))
+        centroid_fc = os.path.join(test_gdb, 'centroid_fc{0}'.format(milliseconds))
+
+        # run reach processing, and test for the results
+
         reach_processing.process_reaches(self.access_validate, hydro_net, hydroline_fc, invalid_tbl)
         feature_count = int(arcpy.GetCount_management(hydroline_fc)[0])
         self.assertEqual(1, feature_count)

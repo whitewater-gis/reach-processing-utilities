@@ -23,6 +23,10 @@ import arcpy
 import multiprocessing
 import math
 import uuid
+import re
+import requests
+import datetime
+import html2text
 
 
 def _get_valid_uuid(workspace):
@@ -34,10 +38,10 @@ def _get_valid_uuid(workspace):
     return arcpy.ValidateTableName(name=uuid.uuid4(), workspace=workspace).replace('_', '')
 
 
-class ReachPoint:
+class ReachPoint(object):
 
     def __init__(self, reach_id, tags=None, geometry=None):
-        self.reach_id = reach_id
+        self.reach_id = int(reach_id)
         if tags is None:
             self.tags = []
         elif type(tags) != list:
@@ -50,7 +54,8 @@ class ReachPoint:
 class Reach:
 
     def __init__(self, reach_id):
-        self.reach_id = str(int(reach_id))
+        self.reach_id = int(reach_id)
+        self.url = 'https://www.americanwhitewater.org/content/River/detail/id/{}/.json'.format(reach_id)
         self.error = None
         self.notes = None
         self.abstract = None
@@ -63,6 +68,121 @@ class Reach:
         self.digitize = None
         self.points = []
         self._accesses_collected = False
+
+    def download(self):
+        response = requests.get(self.url)
+        if response.status_code == 200:
+            raw_json = response.json()
+            self._parse_json(raw_json)
+        else:
+            raise Warning('American Whitewater server could not be reached for reach ID {}.'.format(self.reach_id))
+
+    def _parse_difficulty_string(self, difficulty_combined):
+        match = re.match(
+            '^([I|IV|V|VI|5\.\d]{1,3}(?=-))?-?([I|IV|V|VI|5\.\d]{1,3}[+|-]?)\(?([I|IV|V|VI|5\.\d]{0,3}[+|-]?)',
+            difficulty_combined
+        )
+        self.difficulty_minimum = self._get_if_length(match.group(1))
+        self.difficulty_maximum = self._get_if_length(match.group(2))
+        self.difficulty_outlier = self._get_if_length(match.group(3))
+
+    @staticmethod
+    def _get_if_length(match_string):
+        if len(match_string):
+            return match_string
+        else:
+            return None
+
+    def _validate_aw_json(self, json_block, key):
+
+        # check to ensure a value exists
+        if key not in json_block.keys():
+            return None
+
+        else:
+
+            # clean up the text garbage...because there is a lot of it
+            value = self._cleanup_string(json_block[key])
+
+            # now, ensure something is still there...not kidding, this frequently is the case...it is all gone
+            if not len(value):
+                return None
+
+            else:
+                # now check to ensure there is actually some text in the block, not just blank characters
+                if not re.match(r'^( |\r|\n|\t)+$', value) and value != 'N/A':
+
+                    # if everything is good, return a value
+                    return value
+                else:
+                    return None
+
+    @staticmethod
+    def _cleanup_string(input_string):
+
+        # convert to markdown first, so any reasonable formatting is retained
+        cleanup = html2text(input_string)
+
+        # since people love to hit the space key multiple times in stupid places, get rid of multiple space, but leave
+        # newlines in there since they actually do contribute to formatting
+        cleanup = re.sub(r'\s{2,}', ' ', cleanup)
+
+        # apparently some people think it is a good idea to hit return more than twice...account for this foolishness
+        cleanup = re.sub(r'\n{3,}', '\n\n', cleanup)
+
+        # get rid of any trailing newlines at end of entire text block
+        cleanup = re.sub(r'\n+$', '', cleanup)
+
+        # get rid of any leading or trailing spaces
+        cleanup = cleanup.strip();
+
+        # finally call it good
+        return cleanup
+
+    def _parse_json(self, raw_json):
+
+        # pluck out the stuff we are interested in
+        self._reach_json = raw_json['CContainerViewJSON_view']['CRiverMainGadgetJSON_main']
+
+        # pull a bunch of attributes through validation and save as properties
+        reach_info = self._reach_json['info']
+        self.river_name = self._validate_aw_json(reach_info, 'river');
+        self.river_alternate_name = self._validate_aw_json(reach_info, 'altname')
+        self.name = self._validate_aw_json(reach_info, 'section')
+        self.huc = self._validate_aw_json(reach_info, 'huc')
+        self.description = self._validate_aw_json(reach_info, 'description')
+        self.abstract = self._validate_aw_json(reach_info, 'abstract')
+        self.length = float(self._validate_aw_json(reach_info, 'length'))
+
+        # save the update datetime as a true datetime object
+        self.update_datetime = datetime.datetime.strptime(reach_info['edited'], '%Y-%m-%d %H:%M:%S')
+
+        # process difficulty
+        self.difficulty = self._validate_aw_json(reach_info, 'class')
+        self._parse_difficulty_string(str(self.difficulty))
+
+        # save the access and centroid points
+        self.points.append(
+            ReachPoint(
+                reach_id=self.reach_id,
+                tags=['access', 'putin'],
+                geometry=arcpy.PointGeometry(
+                    inputs=arcpy.Point(reach_info['plon'], reach_info['plat']),
+                    spatial_reference=arcpy.SpatialReference(4326)  # WGS 84
+                )
+            )
+        )
+        self.points.append(
+            ReachPoint(
+                reach_id=self.reach_id,
+                tags=['access', 'takeout'],
+                geometry=arcpy.PointGeometry(
+                    inputs=arcpy.Point(reach_info['tlon'], reach_info['tlat']),
+                    spatial_reference=arcpy.SpatialReference(4326)  # WGS 84
+                )
+            )
+        )
+        self.set_centroid()
 
     @staticmethod
     def _get_mean_point_geometry(first_point_geometry, second_point_geometry):
@@ -131,7 +251,7 @@ class Reach:
             centroid.geometry = self._get_mean_point_geometry(putin.geometry, takeout.geometry)
 
         # add the reach point to the reach point list
-        self.points.append(centroid)
+        self.centroid = centroid
 
     def _get_access_geometries_from_access_fc(self, access_fc, access_type):
         """
@@ -385,7 +505,7 @@ class Reach:
         :param access_fc: Access feature class to find the accesses.
         :return:
         """
-        return self._get_reach_points(['centroid'])[0]
+        return self._get_reach_points('centroid')[0]
 
     def get_centroid_row(self):
         """
