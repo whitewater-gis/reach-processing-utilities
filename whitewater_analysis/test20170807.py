@@ -60,6 +60,14 @@ class TestCaseDownload2204(unittest.TestCase):
         centroid = self.reach.point.centroid
         self.assertEqual((centroid.X, centroid.Y), (-124.148, 47.9619))
 
+    def test_datetime_newer_than_local(self):
+        local_datetime = datetime.datetime(1995, 01, 01)
+        self.assertGreater(self.reach.update_datetime, local_datetime)
+
+    def test_datetime_older_than_local(self):
+        local_datetime = datetime.datetime(2030, 01, 01)
+        self.assertLess(self.reach.update_datetime, local_datetime)
+
 
 if __name__ == '__main__':
     unittest.main()
