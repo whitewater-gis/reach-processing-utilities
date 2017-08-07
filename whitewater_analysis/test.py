@@ -135,7 +135,6 @@ class TestCaseValidation(unittest.TestCase):
 #     def test_get_reach_line_feature_class(self):
 #
 #         # create testing output feature class paths
-#         milliseconds = int(time.time()*100)
 #         hydroline_fc = os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
 #         centroid_fc = os.path.join(test_gdb, 'centroid_fc{0}'.format(milliseconds))
 #

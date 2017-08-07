@@ -26,7 +26,7 @@ import uuid
 import re
 import requests
 import datetime
-import html2text
+from .html2text import html2text
 
 
 def _get_valid_uuid(workspace):
@@ -67,6 +67,7 @@ class Reach:
         self.hydroline = None
         self.digitize = None
         self.points = []
+        self.point = None
         self._accesses_collected = False
 
     def download(self):
@@ -161,27 +162,33 @@ class Reach:
         self.difficulty = self._validate_aw_json(reach_info, 'class')
         self._parse_difficulty_string(str(self.difficulty))
 
-        # save the access and centroid points
-        self.points.append(
-            ReachPoint(
-                reach_id=self.reach_id,
-                tags=['access', 'putin'],
-                geometry=arcpy.PointGeometry(
-                    inputs=arcpy.Point(reach_info['plon'], reach_info['plat']),
-                    spatial_reference=arcpy.SpatialReference(4326)  # WGS 84
+        # ensure putin coordinates are present, and if so, add the put-in point to the points list
+        if reach_info['plon'] is not None and reach_info['plat'] is not None:
+            self.points.append(
+                ReachPoint(
+                    reach_id=self.reach_id,
+                    tags=['access', 'putin'],
+                    geometry=arcpy.PointGeometry(
+                        arcpy.Point(float(reach_info['plon']), float(reach_info['plat'])),
+                        arcpy.SpatialReference(4326)
+                    )
                 )
             )
-        )
-        self.points.append(
-            ReachPoint(
-                reach_id=self.reach_id,
-                tags=['access', 'takeout'],
-                geometry=arcpy.PointGeometry(
-                    inputs=arcpy.Point(reach_info['tlon'], reach_info['tlat']),
-                    spatial_reference=arcpy.SpatialReference(4326)  # WGS 84
+
+        # ensure take-out coordinates are present, and if so, add take-out point to points list
+        if reach_info['tlon'] is not None and reach_info['tlat'] is not None:
+            self.points.append(
+                ReachPoint(
+                    reach_id=self.reach_id,
+                    tags=['access', 'takeout'],
+                    geometry=arcpy.PointGeometry(
+                        arcpy.Point(float(reach_info['tlon']), float(reach_info['tlat'])),
+                        arcpy.SpatialReference(4326)
+                    )
                 )
             )
-        )
+
+        # set the centroid based on the available put-in, and take-out location information
         self.set_centroid()
 
     @staticmethod
@@ -195,10 +202,10 @@ class Reach:
         def _get_mean_coordinate(first_coordinate, second_coordinate):
             return min(first_coordinate, second_coordinate) + abs(first_coordinate - second_coordinate) / 2
 
-        x = _get_mean_coordinate(first_point_geometry.geometry.centroid.X, second_point_geometry.geometry.centroid.X)
-        y = _get_mean_coordinate(first_point_geometry.geometry.centroid.Y, second_point_geometry.geometry.centroid.Y)
+        x = _get_mean_coordinate(first_point_geometry.centroid.X, second_point_geometry.centroid.X)
+        y = _get_mean_coordinate(first_point_geometry.centroid.Y, second_point_geometry.centroid.Y)
 
-        return arcpy.Geometry('POINT', arcpy.Point(x, y))
+        return arcpy.PointGeometry(arcpy.Point(x, y), arcpy.SpatialReference(4326))
 
     def set_access_points_from_access_feature_class(self, access_feature_class):
         """
@@ -235,23 +242,13 @@ class Reach:
         putin = self.get_putin_reachpoint()
         takeout = self.get_takeout_reachpoint()
 
-        # scaffold out a reach centroid point
-        centroid = ReachPoint(self.reach_id, ['centroid'])
-
-        # if only one access, then set the centroid to this, but if neither, bingo out
-        if takeout is None and putin is None:
-            return
-        elif takeout is None:
-            centroid.geometry = putin.geometry
-        elif putin is None:
-            centroid.geometry = takeout.geometry
-
-        # if there is both a putin and takeout, then use the mean coordinates as the centroid
-        else:
-            centroid.geometry = self._get_mean_point_geometry(putin.geometry, takeout.geometry)
-
-        # add the reach point to the reach point list
-        self.centroid = centroid
+        # if both accesses, use the mean center, but if only one, use the one we have to work with
+        if takeout is not None and putin is not None:
+            self.point = self._get_mean_point_geometry(putin.geometry, takeout.geometry)
+        elif takeout is not None:
+            self.point = takeout.geometry
+        elif putin is not None:
+            self.point = putin.geometry
 
     def _get_access_geometries_from_access_fc(self, access_fc, access_type):
         """
