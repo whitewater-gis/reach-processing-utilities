@@ -28,7 +28,7 @@ import json
 import uuid
 
 # import local modules
-from utilities.reach_processing_utilities import *
+from .utilities.reach_processing_utilities import *
 
 # variables
 hydro_net = r'D:\dev\reach-processing-tools\test_data\1711.gdb\Hydrography\HYDRO_NET'
@@ -121,105 +121,105 @@ class TestCaseValidation(unittest.TestCase):
         self.assertTrue(result['valid'])
 
 
-class TestReachProcessing(unittest.TestCase):
-    """
-    Test reach processing tools.
-    """
-    access_validate = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_validate_test'
-
-    def test_process_reach(self):
-        reach = Reach(4)
-        result = reach.validate(self.access_validate, hydro_net)
-        self.assertTrue(result)
-
-    def test_get_reach_line_feature_class(self):
-
-        # create testing output feature class paths
-        milliseconds = int(time.time()*100)
-        hydroline_fc = os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
-        centroid_fc = os.path.join(test_gdb, 'centroid_fc{0}'.format(milliseconds))
-
-        # run reach processing, and test for the results
-
-        reach_processing.process_reaches(self.access_validate, hydro_net, hydroline_fc, invalid_tbl)
-        feature_count = int(arcpy.GetCount_management(hydroline_fc)[0])
-        self.assertEqual(1, feature_count)
-
-
-class TestReachReview(unittest.TestCase):
-    """
-    Test reach review functionality
-    """
-    access_review = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_revise_test'
-    hydrolines = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\hydroline_revise_test'
-    invalid_table = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\invalid_revise_test'
-
-    def test_get_new_reach_hydrolines(self):
-
-        milliseconds = int(time.time()*100)
-        temp_hydroline = arcpy.CopyFeatures_management(
-            self.hydrolines,
-            os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
-        )[0]
-        temp_invalid = arcpy.CopyRows_management(
-            self.invalid_table,
-            os.path.join(test_gdb, 'invalid_tbl{0}'.format(milliseconds))
-        )[0]
-
-        reach_processing.get_new_hydrolines(
-            access_fc=self.access_review,
-            hydro_network=hydro_net,
-            reach_hydroline_fc=temp_hydroline,
-            reach_invalid_tbl=temp_invalid
-        )
-        feature_count = int(arcpy.GetCount_management(temp_hydroline)[0])
-
-        self.assertEqual(2, feature_count)
-
-
-# class TestUpdate(unittest.TestCase):
+# class TestReachProcessing(unittest.TestCase):
+#     """
+#     Test reach processing tools.
+#     """
+#     access_validate = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_validate_test'
 #
-#     def test_get_reach(self):
-#         reachId = 3306
-#         responseJson = update.get_reach(reachId)
-#         responseObject = json.loads(responseJson)
-#         self.assertEqual(reachId, responseObject['features'][0]['properties']['reachId'])
+#     def test_process_reach(self):
+#         reach = Reach(4)
+#         result = reach.validate(self.access_validate, hydro_net)
+#         self.assertTrue(result)
+#
+#     def test_get_reach_line_feature_class(self):
+#
+#         # create testing output feature class paths
+#         milliseconds = int(time.time()*100)
+#         hydroline_fc = os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
+#         centroid_fc = os.path.join(test_gdb, 'centroid_fc{0}'.format(milliseconds))
+#
+#         # run reach processing, and test for the results
+#
+#         reach_processing.process_reaches(self.access_validate, hydro_net, hydroline_fc, invalid_tbl)
+#         feature_count = int(arcpy.GetCount_management(hydroline_fc)[0])
+#         self.assertEqual(1, feature_count)
 
-class TestPublishingUtilitites(unittest.TestCase):
-    """
-    Provide at least some minimal tests to enable troubleshooting the publishing workflows.
-    All data is from subregion 1711.
-    """
-    test_gdb = r'D:\dev\reach-processing-tools\resources\scratch\test_publish_data.gdb'
-    publish_gdb = os.path.join(arcpy.env.scratchFolder, 'scratch{}'.format(arcpy.ValidateTableName(uuid.uuid4())))
 
-    def test_publish(self):
-
-        # clean out the scratch directory
-        for dir_top, dir_list, object_list in arcpy.da.Walk(self.publish_gdb):
-            for object in object_list:
-                arcpy.Delete_management(os.path.join(dir_top, object))
-
-        print(self.publish_gdb)
-
-        scratch_gdb = publishing_utilities.create_publication_geodatabase(
-            analysis_gdb=self.test_gdb,
-            publication_gdb=self.publish_gdb
-        )
-
-        self.assertTrue(True)
-
-    def test_publish_20160328(self):
-
-        analysis_gdb = r'D:\dev\reach-processing-tools\resources\data_20160328.gdb'
-        output_gdb = r'D:\dev\reach-processing-tools\resources\publish_20160328.gdb'
-
-        if arcpy.Exists(output_gdb):
-            arcpy.Delete_management(output_gdb)
-
-        output_gdb = publishing_utilities.create_publication_geodatabase(
-            analysis_gdb=analysis_gdb,
-            publication_gdb=output_gdb
-        )
-
-        self.assertTrue(True)
+# class TestReachReview(unittest.TestCase):
+#     """
+#     Test reach review functionality
+#     """
+#     access_review = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\access_revise_test'
+#     hydrolines = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\hydroline_revise_test'
+#     invalid_table = r'D:\dev\reach-processing-tools\test_data\test_data.gdb\invalid_revise_test'
+#
+#     def test_get_new_reach_hydrolines(self):
+#
+#         milliseconds = int(time.time()*100)
+#         temp_hydroline = arcpy.CopyFeatures_management(
+#             self.hydrolines,
+#             os.path.join(test_gdb, 'hydroline_fc{0}'.format(milliseconds))
+#         )[0]
+#         temp_invalid = arcpy.CopyRows_management(
+#             self.invalid_table,
+#             os.path.join(test_gdb, 'invalid_tbl{0}'.format(milliseconds))
+#         )[0]
+#
+#         reach_processing.get_new_hydrolines(
+#             access_fc=self.access_review,
+#             hydro_network=hydro_net,
+#             reach_hydroline_fc=temp_hydroline,
+#             reach_invalid_tbl=temp_invalid
+#         )
+#         feature_count = int(arcpy.GetCount_management(temp_hydroline)[0])
+#
+#         self.assertEqual(2, feature_count)
+#
+#
+# # class TestUpdate(unittest.TestCase):
+# #
+# #     def test_get_reach(self):
+# #         reachId = 3306
+# #         responseJson = update.get_reach(reachId)
+# #         responseObject = json.loads(responseJson)
+# #         self.assertEqual(reachId, responseObject['features'][0]['properties']['reachId'])
+#
+# class TestPublishingUtilitites(unittest.TestCase):
+#     """
+#     Provide at least some minimal tests to enable troubleshooting the publishing workflows.
+#     All data is from subregion 1711.
+#     """
+#     test_gdb = r'D:\dev\reach-processing-tools\resources\scratch\test_publish_data.gdb'
+#     publish_gdb = os.path.join(arcpy.env.scratchFolder, 'scratch{}'.format(arcpy.ValidateTableName(uuid.uuid4())))
+#
+#     def test_publish(self):
+#
+#         # clean out the scratch directory
+#         for dir_top, dir_list, object_list in arcpy.da.Walk(self.publish_gdb):
+#             for object in object_list:
+#                 arcpy.Delete_management(os.path.join(dir_top, object))
+#
+#         print(self.publish_gdb)
+#
+#         scratch_gdb = publishing_utilities.create_publication_geodatabase(
+#             analysis_gdb=self.test_gdb,
+#             publication_gdb=self.publish_gdb
+#         )
+#
+#         self.assertTrue(True)
+#
+#     def test_publish_20160328(self):
+#
+#         analysis_gdb = r'D:\dev\reach-processing-tools\resources\data_20160328.gdb'
+#         output_gdb = r'D:\dev\reach-processing-tools\resources\publish_20160328.gdb'
+#
+#         if arcpy.Exists(output_gdb):
+#             arcpy.Delete_management(output_gdb)
+#
+#         output_gdb = publishing_utilities.create_publication_geodatabase(
+#             analysis_gdb=analysis_gdb,
+#             publication_gdb=output_gdb
+#         )
+#
+#         self.assertTrue(True)
