@@ -391,10 +391,6 @@ class Reach:
             Dataset.
         :return: Boolean indicating if the reach is valid or not.
         """
-        # if the accesses have not been set, do this now
-        if not self._accesses_collected:
-            self.set_access_points_from_access_feature_class(access_fc)
-
         # although kind of kludgy, since we keep encountering an error I cannot sort out, this is a catch all to keep
         # the script running
         try:
@@ -405,7 +401,7 @@ class Reach:
                 self._validate_putin_takeout_coincidence(access_fc, hydro_network) and
                 self._validate_putin_upstream_from_takeout(access_fc, hydro_network)
             ):
-                arcpy.AddMessage('{} is valid, and will be processed.'.format(self.reach_id))
+                arcpy.AddMessage('{} is valid.'.format(self.reach_id))
                 return True
             # if there is not an error
             else:
@@ -495,15 +491,6 @@ class Reach:
         else:
             return None
 
-    def get_centroid_reachpoint(self):
-        """
-        From two geometry objects, one for the location of the putin and another for the location of the takeout,
-        calculate the middle, halfway between the two, to use as a marker, the centroid for the reach.
-        :param access_fc: Access feature class to find the accesses.
-        :return:
-        """
-        return self._get_reach_points('centroid')[0]
-
     def get_centroid_row(self):
         """
         Get a centroid row for writing out to a feature class.
@@ -516,7 +503,7 @@ class Reach:
             error = 'false'
 
         # get the centroid
-        centroid = self.get_centroid_reachpoint()
+        centroid = self.point.centroid.geometry
         return [self.reach_id, error, self.notes, self.abstract, self.description, self.difficulty,
                 self.difficulty_minimum, self.difficulty_maximum, self.difficulty_outlier, centroid.geometry]
 
