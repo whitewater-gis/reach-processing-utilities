@@ -110,46 +110,61 @@ class TestCaseValidationLocalData(unittest.TestCase):
     def test_validate_putin_takeout_coincidence_true(self):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(self.test_access_validate)
-        result = reach._validate_putin_takeout_coincidence(self.test_access_validate, test_hydro_net)
+        result = reach._validate_putin_takeout_coincidence(test_hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_takeout_coincidence(self):
         reach = Reach(2)
         reach.set_access_points_from_access_feature_class(self.test_access_validate)
-        result = reach.validate(self.test_access_validate, test_hydro_net)
+        result = reach.validate(test_hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_upstream_from_takeout_false(self):
         reach = Reach(3)
         reach.set_access_points_from_access_feature_class(self.test_access_validate)
-        result = reach._validate_putin_upstream_from_takeout(self.test_access_validate, test_hydro_net)
+        result = reach._validate_putin_upstream_from_takeout(test_hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_upstream_from_takeout_true(self):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(self.test_access_validate)
-        result = reach._validate_putin_upstream_from_takeout(self.test_access_validate, test_hydro_net)
+        result = reach._validate_putin_upstream_from_takeout(test_hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_upstream_from_takeout(self):
         reach = Reach(2)
         reach.set_access_points_from_access_feature_class(self.test_access_validate)
-        result = reach.validate(self.test_access_validate, test_hydro_net)
+        result = reach.validate(test_hydro_net)
         self.assertFalse(result)
 
     def test_validate_reach_valid(self):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(self.test_access_validate)
-        result = reach.validate(self.test_access_validate, test_hydro_net)
+        result = reach.validate(test_hydro_net)
         self.assertTrue(result)
 
 
-class TestCaseValidationDownload2204(unittest.TestCase):
+class TestCaseDownloadValidate2123(unittest.TestCase):
 
-    def test_validate_2204(self):
-        reach = Reach(2204)
-        reach.download()
-        self.assertTrue(False)
+    def setUp(self):
+        self.reach = Reach(2123)
+        self.reach.download()
+
+    def test_validate_has_putin_and_takeout(self):
+        result = self.reach._validate_has_putin_and_takeout()
+        self.assertTrue(result)
+
+    def test_validate_putin_takeout_coincidence(self):
+        result = self.reach._validate_putin_takeout_coincidence(test_hydro_net)
+        self.assertTrue(result)
+
+    def test_validate_putin_upstream_from_takeout(self):
+        result = self.reach._validate_putin_upstream_from_takeout(test_hydro_net)
+        self.assertTrue(result)
+
+    def test_validate_reach_valid(self):
+        result = self.reach.validate(test_hydro_net)
+        self.assertTrue(result)
 
 if __name__ == '__main__':
     unittest.main()

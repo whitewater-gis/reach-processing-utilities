@@ -89,7 +89,7 @@ class Reach:
 
     @staticmethod
     def _get_if_length(match_string):
-        if len(match_string):
+        if match_string and len(match_string):
             return match_string
         else:
             return None
@@ -106,7 +106,9 @@ class Reach:
             value = self._cleanup_string(json_block[key])
 
             # now, ensure something is still there...not kidding, this frequently is the case...it is all gone
-            if not len(value):
+            if not value:
+                return None
+            elif not len(value):
                 return None
 
             else:
@@ -120,6 +122,10 @@ class Reach:
 
     @staticmethod
     def _cleanup_string(input_string):
+
+        # ensure something to work with
+        if not input_string:
+            return input_string
 
         # convert to markdown first, so any reasonable formatting is retained
         cleanup = html2text(input_string)
@@ -277,13 +283,36 @@ class Reach:
             self.notes = 'reach does not have both a put-in and take-out'
             return False
 
-    def _validate_putin_takeout_coincidence(self, access_fc, hydro_network):
+    def _replace_point(self, unique_point_tags, new_point):
+        """
+        Helper function to replace a point in the list of points based on tags uniquely selecting only one point.
+        :param unique_point_tags: List of strings used to extract the unique point.
+        :param new_point: New point object to replace the old one with.
+        :return:
+        """
+        # ensure supplied point is a point type
+        if not isinstance(new_point, ReachPoint):
+            raise Exception('The point being used for replacement is not a ReachPoint. Please supply a ReachPoint.')
+
+        # select the point based on the unique set of tags
+        this_point_list = [point for point in self.points if len(set(unique_point_tags) & set(point.tags)) == 0]
+
+        # ensure there is only one point returned
+        if len(this_point_list) > 1:
+            raise Exception('More than one point is being selected when trying to replace a point. Please use more specific tags to identify the point.')
+
+        # update the point list to remove said point
+        self.points = [point for point in self.points if not
+                       len(unique_point_tags) == len(set(point.tags) & set(unique_point_tags))]
+
+        # add new point to points list
+        self.points.append(new_point)
+
+    def _validate_putin_takeout_coincidence(self, hydro_network):
         """
         Ensure the putin and takeout are coincident with the USGS hydrolines. Just to compensate for error, the access
         points will be snapped to the hydrolines if they are within 500 feet since there can be a slight discrepancy in
         data sources' idea of exactly where the river center line actually is.
-        :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
-            takeout. These fields must store the AW id for the point role as a putin or takeout.
         :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology
             Dataset.
         :return: boolean: Indicates if the putin and takeout are coincident with the hydroline feature class.
@@ -300,24 +329,21 @@ class Reach:
             out_layer='hydroline_lyr{}'.format(uuid.uuid4())
         )
 
-        # get the path to the accesses feature class
-        data_source = arcpy.Describe(access_fc).path
-
-        # sql statement
-        sql_select = "{0} = '{1}' AND( {2} = 'putin' OR {3} = 'takeout' )".format(
-            arcpy.AddFieldDelimiters(data_source, 'reach_id'),
-            self.reach_id,
-            arcpy.AddFieldDelimiters(data_source, 'type'),
-            arcpy.AddFieldDelimiters(data_source, 'type')
+        # create an in memory feature class to use for snapping, since the freaking editing toolbox will not let us
+        # snap geometries...bullshit
+        access_list = [self.get_putin_reachpoint(), self.get_takeout_reachpoint()]
+        access_geometry_list = [access.geometry for access in access_list]
+        temporary_access_feature_class = arcpy.CopyFeatures_management(
+            in_features=access_geometry_list,
+            out_feature_class=os.path.join('in_memory', 'temp_access{}'.format(_get_valid_uuid('in_memory')))
         )
 
         # create an access layer
         access_lyr = arcpy.MakeFeatureLayer_management(
-            access_fc, 'putin_takeout_coincidence{}'.format(uuid.uuid4()),
-            where_clause=sql_select
+            temporary_access_feature_class, 'putin_takeout_coincidence{}'.format(_get_valid_uuid('in_memory')),
         )[0]
 
-        # snap the putin & takeout to the hydro lines - this does not affect the permanent data set, only this analysis
+        # snap the putin & takeout to the hydro lines
         arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
 
         # select by location, selecting accesses coincident with the hydrolines
@@ -325,41 +351,46 @@ class Reach:
 
         # if successful, two access features should be selected, the put in and the takeout
         if int(arcpy.GetCount_management(access_lyr)[0]) == 2:
-            self.error = False
+            self.error = False  # set the error flag to false
+
+            # update the put-in and take-out reach point geometry objects
+            for index in xrange(0, 1):
+                access_list[index].geometry = access_geometry_list[index]
+
+            # update the put-in and take-out geometries from the snapped points
+            self._replace_point(['access', 'putin'], access_list[0])
+            self._replace_point(['access', 'takeout'], access_list[1])
+
             return True
         else:
             self.error = True
             self.notes = 'reach putin and takeout are not coincident with hydrolines'
             return False
 
-    def _validate_putin_upstream_from_takeout(self, access_fc, hydro_network):
+    def _validate_putin_upstream_from_takeout(self, hydro_network):
         """
         Ensure the putin is indeed upstream of the takeout.
-        :param putin_geometry: Point Geometry object for the putin.
-        :param takeout_geometry: Point Geometry object for the takeout.
         :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology Dataset
         :return: boolean: Indicates if when tracing the geometric network upstream from the takeout, if the putin is
                           upstream from the takeout.
         """
-        # get the path to the accesses feature class
-        data_source = arcpy.Describe(access_fc).path
+        # get geometry object list for putin and takeout
+        geometry_list = [self.get_putin_reachpoint().geometry, self.get_takeout_reachpoint().geometry]
 
-        # create selection sql
-        def get_where(reach_id, access_type):
-            return "{}='{}' AND {}='{}'".format(
-                arcpy.AddFieldDelimiters(data_source, 'reach_id'),
-                reach_id,
-                arcpy.AddFieldDelimiters(data_source, 'type'),
-                access_type
-            )
+        # project the geometry to the same as the geometric network
+        projected_putin_takeout = arcpy.Project_management(
+            in_dataset=geometry_list,
+            out_dataset=os.path.join(arcpy.env.scratchGDB,
+                                     'projected_access{}'.format(_get_valid_uuid(arcpy.env.scratchGDB))),
+            out_coor_system=arcpy.Describe(os.path.dirname(hydro_network)).spatialReference
+        )
 
-        # get geometry object for putin and takeout
-        takeout_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), get_where(self.reach_id, 'takeout'))[0]
-        putin_geometry = arcpy.Select_analysis(access_fc, arcpy.Geometry(), get_where(self.reach_id, 'putin'))[0]
+        # rip the geometries from the access out into a list
+        projected_geometry_list = [row[0] for row in arcpy.da.SearchCursor(projected_putin_takeout, 'SHAPE@')]
 
         # trace upstream from the takeout
         group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream{}'.format(uuid.uuid4()),
-                                                             takeout_geometry, 'TRACE_UPSTREAM')[0]
+                                                             projected_geometry_list[1], 'TRACE_UPSTREAM')[0]
 
         # extract the flowline layer with upstream features selected from the group layer
         hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
@@ -371,7 +402,7 @@ class Reach:
         for hydroline_geometry in geometry_list:
 
             # test if the putin is coincident with the hydroline geometry segment
-            if putin_geometry.within(hydroline_geometry):
+            if projected_geometry_list[0].within(hydroline_geometry):
 
                 # if coincident, good to go, and exiting function
                 self.error = False
@@ -382,7 +413,7 @@ class Reach:
         self.notes = 'reach put-in is not upstream from take-out'
         return False
 
-    def validate(self, access_fc, hydro_network):
+    def validate(self, hydro_network):
         """
         Make sure the reach is valid.
         :param access_fc: The point feature class for accesses. There must be an attribute named putin and another
@@ -395,18 +426,19 @@ class Reach:
         # the script running
         try:
 
-            # run all the tests
-            if (
-                self._validate_has_putin_and_takeout() and
-                self._validate_putin_takeout_coincidence(access_fc, hydro_network) and
-                self._validate_putin_upstream_from_takeout(access_fc, hydro_network)
-            ):
-                arcpy.AddMessage('{} is valid.'.format(self.reach_id))
-                return True
-            # if there is not an error
-            else:
+            # run all the tests, and if anything does not pass, fail
+            if not self._validate_has_putin_and_takeout():
+                return False
+            if not self._validate_putin_takeout_coincidence(hydro_network):
+                return False
+            if not self._validate_putin_upstream_from_takeout(hydro_network):
                 return False
 
+            # if all the tests passed
+            else:
+                self.error = False
+                arcpy.AddMessage('{} is valid.'.format(self.reach_id))
+                return True
 
         # if something goes wrong
         except Exception as e:
