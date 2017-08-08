@@ -430,6 +430,9 @@ class Reach:
             provided tags to include the point in the returned list.
         :return: List of reach points fulfilling the request.
         """
+        # create dummy variable
+        points = []
+
         # if no tags are provided, simply populate with all points
         if point_tag_list is None:
             points = self.points
@@ -446,11 +449,8 @@ class Reach:
             # create a list of points with tags matching any of the provided tags
             points = [point for point in self.points if set(point_tag_list).intersection(set(point.tags))]
 
-        # return an empty list if there are no points or the created list of points if any found
-        if len(points):
-            return points
-        else:
-            return []
+        # return what ever points turns out to be...an empty list or otherwise
+        return points
 
     def get_access_points(self, access_type=None):
         """

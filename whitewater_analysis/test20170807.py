@@ -81,58 +81,67 @@ class TestCaseValidationLocalData(unittest.TestCase):
     """
     Test validation functions with data created to break in the right ways.
     """
-    access_validate = os.path.join(test_data_gdb, 'access_validate_test')
+    test_access_validate = os.path.join(test_data_gdb, 'access_validate_test')
 
     def test_validate_has_putin_and_takeout_false(self):
         reach = Reach(1)
+        reach.set_access_points_from_access_feature_class(self.test_access_validate)
         result = reach._validate_has_putin_and_takeout()
         self.assertFalse(result)
 
     def test_validate_has_putin_and_takeout_true(self):
         reach = Reach(4)
+        reach.set_access_points_from_access_feature_class(self.test_access_validate)
         result = reach._validate_has_putin_and_takeout()
         self.assertTrue(result)
 
     def test_validate_reach_invalid_has_putin_and_takeout(self):
         reach = Reach(1)
-        result = reach.validate(self.access_validate, test_hydro_net)
+        result = reach.validate(self.test_access_validate, test_hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_takeout_coincidence_false(self):
         reach = Reach(2)
-        result = reach._validate_putin_takeout_coincidence(self.access_validate, test_hydro_net)
+        result = reach._validate_putin_takeout_coincidence(self.test_access_validate, test_hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_takeout_coincidence_true(self):
         reach = Reach(4)
-        result = reach._validate_putin_takeout_coincidence(self.access_validate, test_hydro_net)
+        result = reach._validate_putin_takeout_coincidence(self.test_access_validate, test_hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_takeout_coincidence(self):
         reach = Reach(2)
-        result = reach.validate(self.access_validate, test_hydro_net)
+        result = reach.validate(self.test_access_validate, test_hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_upstream_from_takeout_false(self):
         reach = Reach(3)
-        result = reach._validate_putin_upstream_from_takeout(self.access_validate, test_hydro_net)
+        result = reach._validate_putin_upstream_from_takeout(self.test_access_validate, test_hydro_net)
         self.assertFalse(result)
 
     def test_validate_putin_upstream_from_takeout_true(self):
         reach = Reach(4)
-        result = reach._validate_putin_upstream_from_takeout(self.access_validate, test_hydro_net)
+        result = reach._validate_putin_upstream_from_takeout(self.test_access_validate, test_hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_invalid_putin_upstream_from_takeout(self):
         reach = Reach(2)
-        result = reach.validate(self.access_validate, test_hydro_net)
-        self.assertFalse(result['valid'])
+        result = reach.validate(self.test_access_validate, test_hydro_net)
+        self.assertFalse(result)
 
     def test_validate_reach_valid(self):
         reach = Reach(4)
-        result = reach.validate(self.access_validate, test_hydro_net)
-        self.assertTrue(result['valid'])
+        result = reach.validate(self.test_access_validate, test_hydro_net)
+        self.assertTrue(result)
 
+
+class TestCaseValidationDownload2204(unittest.TestCase):
+
+    def test_validate_2204(self):
+        reach = Reach(2204)
+        reach.download()
+        self.assertTrue(False)
 
 if __name__ == '__main__':
     unittest.main()
