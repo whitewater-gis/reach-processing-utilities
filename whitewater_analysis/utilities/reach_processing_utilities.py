@@ -336,7 +336,7 @@ class Reach:
         temporary_access_feature_class = arcpy.CopyFeatures_management(
             in_features=access_geometry_list,
             out_feature_class=os.path.join('in_memory', 'temp_access{}'.format(_get_valid_uuid('in_memory')))
-        )
+        )[0]
 
         # create an access layer
         access_lyr = arcpy.MakeFeatureLayer_management(

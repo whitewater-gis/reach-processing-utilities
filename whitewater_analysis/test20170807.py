@@ -37,6 +37,7 @@ resources_dir = os.path.join(project_dir, 'resources')
 test_data_dir = os.path.join(project_dir, 'test_data')
 test_data_gdb = os.path.join(test_data_dir, 'test_data.gdb')
 test_hydro_net = os.path.join(test_data_dir, '1711.gdb', 'Hydrography', 'HYDRO_NET')
+test_access_validate = os.path.join(test_data_gdb, 'access_validate_test')
 
 
 class TestCaseDownload2204(unittest.TestCase):
@@ -77,7 +78,7 @@ class TestCaseDownload2204(unittest.TestCase):
         self.assertLess(self.reach.update_datetime, local_datetime)
 
 
-class TestCaseValidationLocalData(unittest.TestCase):
+class TestCaseValidationLocalTestData(unittest.TestCase):
     """
     Test validation functions with data created to break in the right ways.
     """
@@ -141,6 +142,29 @@ class TestCaseValidationLocalData(unittest.TestCase):
         reach = Reach(4)
         reach.set_access_points_from_access_feature_class(self.test_access_validate)
         result = reach.validate(test_hydro_net)
+        self.assertTrue(result)
+
+
+class TestCaseValidationLocal2123(unittest.TestCase):
+
+    def setUp(self):
+        self.reach = Reach(2123)
+        self.reach.set_access_points_from_access_feature_class(test_access_validate)
+
+    def test_validate_has_putin_and_takeout(self):
+        result = self.reach._validate_has_putin_and_takeout()
+        self.assertTrue(result)
+
+    def test_validate_putin_takeout_coincidence(self):
+        result = self.reach._validate_putin_takeout_coincidence(test_hydro_net)
+        self.assertTrue(result)
+
+    def test_validate_putin_upstream_from_takeout(self):
+        result = self.reach._validate_putin_upstream_from_takeout(test_hydro_net)
+        self.assertTrue(result)
+
+    def test_validate_reach_valid(self):
+        result = self.reach.validate(test_hydro_net)
         self.assertTrue(result)
 
 
