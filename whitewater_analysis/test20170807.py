@@ -58,11 +58,11 @@ class TestCaseDownload2204(unittest.TestCase):
         self.assertEqual(self.reach.difficulty, 'II-V')
 
     def test_point_putin_coordinates(self):
-        centroid = [point.geometry.centroid for point in self.reach.points if 'putin' in point.tags][0]
+        centroid = [point.geometry.centroid for point in self.reach.points if point.subcategory == 'putin'][0]
         self.assertEqual((centroid.X, centroid.Y), (-124.038, 47.9634))
 
     def test_point_takeout_coordinates(self):
-        centroid = [point.geometry.centroid for point in self.reach.points if 'takeout' in point.tags][0]
+        centroid = [point.geometry.centroid for point in self.reach.points if point.subcategory == 'takeout'][0]
         self.assertEqual((centroid.X, centroid.Y), (-124.258, 47.9604))
 
     def test_point_centroid_coordinates(self):

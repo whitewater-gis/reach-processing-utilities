@@ -40,14 +40,11 @@ def _get_valid_uuid(workspace):
 
 class ReachPoint(object):
 
-    def __init__(self, reach_id, tags=None, geometry=None):
+    def __init__(self, reach_id, category, subcategory=None, geometry=None):
         self.reach_id = int(reach_id)
-        if tags is None:
-            self.tags = []
-        elif type(tags) != list:
-            raise Exception('ReachPoint tags must be a list of strings.')
-        else:
-            self.tags = tags
+        self.category = category
+        if isinstance(subcategory, str) and len(subcategory) > 0:
+            self.subcategory = subcategory
         self.geometry = geometry
 
 
@@ -173,7 +170,8 @@ class Reach:
             self.points.append(
                 ReachPoint(
                     reach_id=self.reach_id,
-                    tags=['access', 'putin'],
+                    category='access',
+                    subcategory='putin',
                     geometry=arcpy.PointGeometry(
                         arcpy.Point(float(reach_info['plon']), float(reach_info['plat'])),
                         arcpy.SpatialReference(4326)
@@ -186,7 +184,8 @@ class Reach:
             self.points.append(
                 ReachPoint(
                     reach_id=self.reach_id,
-                    tags=['access', 'takeout'],
+                    category='access',
+                    subcategory='takeout',
                     geometry=arcpy.PointGeometry(
                         arcpy.Point(float(reach_info['tlon']), float(reach_info['tlat'])),
                         arcpy.SpatialReference(4326)
@@ -231,7 +230,7 @@ class Reach:
 
                 # iterate each geometry, create a reach point, and add this reach point to the list
                 for access_geometry in access_geometries:
-                    self.points.append(ReachPoint(self.reach_id, ['access', access_type], access_geometry))
+                    self.points.append(ReachPoint(self.reach_id, 'access', access_type, access_geometry))
 
         # set the centroid
         self.set_centroid()
@@ -283,10 +282,11 @@ class Reach:
             self.notes = 'reach does not have both a put-in and take-out'
             return False
 
-    def _replace_point(self, unique_point_tags, new_point):
+    def _replace_point(self, category, subcategory, new_point):
         """
         Helper function to replace a point in the list of points based on tags uniquely selecting only one point.
-        :param unique_point_tags: List of strings used to extract the unique point.
+        :param category: Category used to identify the point.
+        :param subcategory: Point subcaegory used to replace the point.
         :param new_point: New point object to replace the old one with.
         :return:
         """
@@ -294,16 +294,14 @@ class Reach:
         if not isinstance(new_point, ReachPoint):
             raise Exception('The point being used for replacement is not a ReachPoint. Please supply a ReachPoint.')
 
-        # select the point based on the unique set of tags
-        this_point_list = [point for point in self.points if len(set(unique_point_tags) & set(point.tags)) == 0]
+        this_point_list = [p for p in self.points if p.category == category and p.subcategory == subcategory]
 
         # ensure there is only one point returned
         if len(this_point_list) > 1:
-            raise Exception('More than one point is being selected when trying to replace a point. Please use more specific tags to identify the point.')
+            raise Exception('More than one point is being selected when trying to replace a point. Please use more specific identifiers for the point.')
 
         # update the point list to remove said point
-        self.points = [point for point in self.points if not
-                       len(unique_point_tags) == len(set(point.tags) & set(unique_point_tags))]
+        self.points = [p for p in self.points if not p.category == category and p.subcategory == subcategory]
 
         # add new point to points list
         self.points.append(new_point)
@@ -358,8 +356,8 @@ class Reach:
                 access_list[index].geometry = access_geometry_list[index]
 
             # update the put-in and take-out geometries from the snapped points
-            self._replace_point(['access', 'putin'], access_list[0])
-            self._replace_point(['access', 'takeout'], access_list[1])
+            self._replace_point('access', 'putin', access_list[0])
+            self._replace_point('access', 'takeout', access_list[1])
 
             return True
         else:
@@ -450,41 +448,34 @@ class Reach:
             arcpy.AddMessage('{} caused an unspecified error - '.format(self.reach_id, message))
             return False
 
-    def _get_reach_points(self, point_tag_list=None, inclusive=True):
+    def _get_reach_points(self, category=None, subcategory=None):
         """
         Retrieve reach points using tags.
-        :param point_tag_list: List of tags to use for retrieving reach points.
-        :param inclusive: Boolean indicating if all supplied tags must be true for every point, or just one of the
-            provided tags to include the point in the returned list.
+        :param category: Primary point category as string.
+        :param subcategory: Secondary point category as a string.
         :return: List of reach points fulfilling the request.
         """
-        # create dummy variable
-        points = []
+        # if only the category is provided
+        if len(category) and subcategory is None:
+            return [point for point in self.points if point.category == category]
 
-        # if no tags are provided, simply populate with all points
-        if point_tag_list is None:
-            points = self.points
+        # if only the subcategory is provided
+        elif len(subcategory) and category is None:
+            return [point for point in self.points if point.subcategory == subcategory]
 
-        # if inclusive is true, and each point must contain all the supplied tags
-        elif inclusive and len(self.points) and len(point_tag_list):
+        # if both the category and subcategory are provided
+        elif len(category) and len(subcategory):
+            return [point for point in self.points if point.category == category and point.subcategory == subcategory]
 
-            # create a list of points with tags matching all the provided tags
-            points = [point for point in self.points if set(point_tag_list).issubset(set(point.tags))]
-
-        # if not inclusive, and each point must only contain one of the supplied tags
-        elif not inclusive and len(self.points) and len(point_tag_list):
-
-            # create a list of points with tags matching any of the provided tags
-            points = [point for point in self.points if set(point_tag_list).intersection(set(point.tags))]
-
-        # return what ever points turns out to be...an empty list or otherwise
-        return points
+        # otherwise, just give back all the points
+        else:
+            return self.points
 
     def get_access_points(self, access_type=None):
         """
-        Get a list of hydropoints based on the access type specified.
+        Get a list of reach points based on the access type specified.
         :param access_type: Type of access, either putin, takeout, or intermediate.
-        :return: List of hydropoints of the specified type if they exist, or none if it does not.
+        :return: List of reach points of the specified type if they exist, or none if it does not.
         """
 
         # if an access type is specified
@@ -498,11 +489,11 @@ class Reach:
                 raise Exception('Access type for get_access_points must be either putin, takeout, or intermediate')
 
             # retrieve the accesses from the reach points
-            access_points = self._get_reach_points(['access', access_type])
+            access_points = self._get_reach_points('access', access_type)
 
         # if an access type is not specified, just get the accesses
         else:
-            access_points = [point for point in self.points if 'access' in point.tags]
+            access_points = self._get_reach_points('access')
 
         if len(access_points):
             return access_points
@@ -534,10 +525,9 @@ class Reach:
         else:
             error = 'false'
 
-        # get the centroid
-        centroid = self.point.centroid.geometry
-        return [self.reach_id, error, self.notes, self.abstract, self.description, self.difficulty,
-                self.difficulty_minimum, self.difficulty_maximum, self.difficulty_outlier, centroid.geometry]
+        # output a row with relevant information for possibly fixing the errors
+        return [self.reach_id, self.name, self.river_name, self.river_alternate_name, error, self.notes,
+                self.point.centroid.geometry]
 
     def get_hydroline_row(self):
         """
@@ -545,15 +535,6 @@ class Reach:
         :return: Hydroline row as a list.
         """
         return [self.reach_id, self.digitize, self.hydroline]
-
-    @staticmethod
-    def set_hydroline_geometry_multithreaded(params):
-        """
-        Multiprocessing wrapper for set hydroline geometry object.
-        :param params: HydrolineProcessing object.
-        :return: Reach object
-        """
-        return Reach.set_hydroline_geometry(params.reach, params.access_fc, params.hydro_network)
 
     def set_hydroline_geometry(self, access_fc, hydro_network):
         """
@@ -736,78 +717,6 @@ class FeatureCollectionHydroline(_FeatureCollection):
             return True
         else:
             return False
-
-    @staticmethod
-    def process_reaches_multithreaded(access_fc, hydro_network, output_workspace):
-        """
-        Create a hydropoint and hydroline feature class using an access feature class with putins and takeouts to 
-            determine the hydropoints from the averaged centroid, and trace the USGS NHD hydrolines to get the
-            hydrolines.
-        :param access_fc: The point feature class for accesses. There must be an attribute named putin and another
-            named takeout. These fields must store the reach id for the point role as a putin or takeout.
-        :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology
-            Dataset.
-        :param output_workspace: File geodatabase where the data will be stored.
-        :return:
-        """
-
-        # class for combining parameters for multiprocessing
-        class HydrolineProcessingParams:
-
-            def __init__(self, reach):
-                self.reach = reach
-                self.access_fc = access_fc
-                self.hydro_network = hydro_network
-
-        # helper function to break apart lists into sublists
-        def blow_chunks(full_list, sublist_length):
-            for i in range(0, len(full_list), sublist_length):
-                yield full_list[i:i + sublist_length]
-
-        # get list of reach id's from the accesses not including the NULL or zero values
-        reach_id_list = set(row[0] for row in arcpy.da.SearchCursor(access_fc, 'reach_id',
-                                                                    "reach_id IS NOT NULL AND reach_id <> '0'"))
-
-        # give a little beta to the front end
-        arcpy.AddMessage('{} reaches queued for processing.'.format(len(reach_id_list)))
-
-        # get the spatial reference from the input access feature class, typically nad83 to match the NHD data
-        spatial_reference = arcpy.Describe(access_fc).spatialReference
-
-        # progress tracker
-        valid_count = 0
-
-        # get the list of batching chunks based on the number of cores available
-        cpu_count = multiprocessing.cpu_count()
-        chunk_count = math.ceil(len(reach_id_list) / cpu_count)
-
-        # create feature collections for centroids and hydrolines
-        centroid_feature_collection = FeatureCollectionCentroid(output_workspace, spatial_reference)
-        hydroline_feature_collection = FeatureCollectionHydroline(output_workspace, spatial_reference)
-
-        # break apart the reach id list into sublists for chunked processing and iterate
-        for reach_id_chunk in blow_chunks(reach_id_list, cpu_count):
-
-            # create a list of reach object instances for the chunk of reach id's
-            reach_instance_chunk = [Reach(reach_id) for reach_id in reach_id_chunk]
-
-            # for set the centroid geometry for each reach instance
-            for reach_instance in reach_instance_chunk:
-                reach_instance.get_centroid_reachpoint
-
-            # factor the reach instance chunk into a list of hydroline processing parameter object instances
-            params_list = [HydrolineProcessingParams(reach) for reach in reach_instance_chunk]
-
-            # use multiprocessing to do the heavy lifting
-            with multiprocessing.Pool(cpu_count) as pool:
-                reach_instance_chunk = pool.map(Reach.set_hydroline_geometry_multithreaded, params_list)
-
-            # write all the centroids
-            centroid_feature_collection.write_rows([reach.get_centroid_row() for reach in reach_instance_chunk])
-
-            # write the valid reaches to the hydrolines
-            hydroline_feature_collection.write_rows([reach.get_hydroline_row() for reach in reach_instance_chunk
-                                                     if not reach.error])
 
 
 class FeatureCollectionCentroid(_FeatureCollection):
