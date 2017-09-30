@@ -36,7 +36,9 @@ project_dir = os.path.dirname(this_dir)
 resources_dir = os.path.join(project_dir, 'resources')
 test_data_dir = os.path.join(project_dir, 'test_data')
 test_data_gdb = os.path.join(test_data_dir, 'test_data.gdb')
-test_hydro_net = os.path.join(test_data_dir, '1711.gdb', 'Hydrography', 'HYDRO_NET')
+test_fds = os.path.join(test_data_dir, '1711.gdb', 'Hydrography')
+test_hydro_net = os.path.join(test_fds, 'HYDRO_NET')
+test_hydroline_fc = os.path.join(test_fds, 'NHDFlowline')
 test_access_validate = os.path.join(test_data_gdb, 'access_validate_test')
 
 
@@ -145,11 +147,17 @@ class TestCaseValidationLocalTestData(unittest.TestCase):
         self.assertTrue(result)
 
 
-class TestCaseValidationLocal2123(unittest.TestCase):
+class TestCaseLocal2123(unittest.TestCase):
 
     def setUp(self):
         self.reach = Reach(2123)
         self.reach.set_access_points_from_access_feature_class(test_access_validate)
+
+    def test_snap_accesses_to_hydroline(self):
+        start_coordinates = [(p.geometry.centroid.X, p.geometry.centroid.X) for p in self.reach.points]
+        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
+        result_coordinates = [(p.geometry.centroid.X, p.geometry.centroid.X) for p in self.reach.points]
+        self.assertNotEqual(start_coordinates, result_coordinates)
 
     def test_validate_has_putin_and_takeout(self):
         result = self.reach._validate_has_putin_and_takeout()
@@ -160,10 +168,12 @@ class TestCaseValidationLocal2123(unittest.TestCase):
         self.assertTrue(result)
 
     def test_validate_putin_upstream_from_takeout(self):
+        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
         result = self.reach._validate_putin_upstream_from_takeout(test_hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_valid(self):
+        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
         result = self.reach.validate(test_hydro_net)
         self.assertTrue(result)
 
@@ -174,6 +184,12 @@ class TestCaseDownloadValidate2123(unittest.TestCase):
         self.reach = Reach(2123)
         self.reach.download()
 
+    def test_snap_accesses_to_hydroline(self):
+        start_coordinates = [(p.geometry.centroid.X, p.geometry.centroid.X) for p in self.reach.points]
+        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
+        result_coordinates = [(p.geometry.centroid.X, p.geometry.centroid.X) for p in self.reach.points]
+        self.assertNotEqual(start_coordinates, result_coordinates)
+
     def test_validate_has_putin_and_takeout(self):
         result = self.reach._validate_has_putin_and_takeout()
         self.assertTrue(result)
@@ -183,10 +199,12 @@ class TestCaseDownloadValidate2123(unittest.TestCase):
         self.assertTrue(result)
 
     def test_validate_putin_upstream_from_takeout(self):
+        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
         result = self.reach._validate_putin_upstream_from_takeout(test_hydro_net)
         self.assertTrue(result)
 
     def test_validate_reach_valid(self):
+        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
         result = self.reach.validate(test_hydro_net)
         self.assertTrue(result)
 

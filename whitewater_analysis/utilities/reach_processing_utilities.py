@@ -37,6 +37,13 @@ def _get_valid_uuid(workspace):
     """
     return arcpy.ValidateTableName(name=uuid.uuid4(), workspace=workspace).replace('_', '')
 
+def _add_uid(input_string):
+        """
+        Helper function to add the UID string to names for intermediate data.
+        :return: String with uuid appended.
+        """
+        return '{}_{}'.format(input_string, str(uuid.uuid4()).replace('-', ''))
+
 
 class ReachPoint(object):
 
@@ -244,8 +251,8 @@ class Reach:
         :return:
         """
         # get the putin and takeout reach points from the list
-        putin = self.get_putin_reachpoint()
-        takeout = self.get_takeout_reachpoint()
+        putin = self.reachpoint_putin
+        takeout = self.reachpoint_takeout
 
         # if both accesses, use the mean center, but if only one, use the one we have to work with
         if takeout is not None and putin is not None:
@@ -274,7 +281,7 @@ class Reach:
         Ensure the specified reach has a putin and takeout.
         :return:
         """
-        if self.get_putin_reachpoint() and self.get_takeout_reachpoint():
+        if self.reachpoint_putin and self.reachpoint_takeout:
             self.error = False
             return True
         else:
@@ -301,10 +308,86 @@ class Reach:
             raise Exception('More than one point is being selected when trying to replace a point. Please use more specific identifiers for the point.')
 
         # update the point list to remove said point
-        self.points = [p for p in self.points if not p.category == category and p.subcategory == subcategory]
+        self.points = [p for p in self.points if not (p.category == category and  p.subcategory == subcategory)]
 
         # add new point to points list
         self.points.append(new_point)
+
+    def _snap_points_to_hydroline(self, hydroline_feature_layer, category, subcategory=None):
+        """
+        Snap points in points list to hydrolines if within 500 feet.
+        :param hydroline_feature_layer: Hydroline feature layar or feature class to snap points to.
+        :param category: Categorical description for points.
+        :param subcategory: Optional subcategory to identify points.
+        :return:
+        """
+        # if the subcategory is provided, extract these points from the points list, and remove them from the master
+        if subcategory:
+            update_points = [p for p in self.points if p.category == category and p.subcategory == subcategory]
+            self.points = [p for p in self.points if p.category != category and p.subcategory != subcategory]
+
+        # otherwise, just extract based on the category
+        else:
+            update_points = [p for p in self.points if p.category == category]
+            self.points = [p for p in self.points if p.category != category]
+
+        # now, create a feature class from a list of the geometries
+        these_points_feature_class = arcpy.CopyFeatures_management(
+            in_features=[r.geometry for r in update_points],
+            out_feature_class=os.path.join('in_memory', _add_uid('these_points'))
+        )[0]
+
+        # then create a layer, since this is what the edit toolbox tools have to have...such bullshit
+        these_points_layer = arcpy.MakeFeatureLayer_management(these_points_feature_class)[0]
+
+        # ensure the hydroline feature layer is, in fact, an actual layer
+        hydroline_feature_layer = arcpy.MakeFeatureLayer_management(hydroline_feature_layer, _add_uid('hydroline'))
+
+        # all of that, just so we can run this tool, and snap some points
+        arcpy.Snap_edit(these_points_layer, [[hydroline_feature_layer, 'EDGE', '500 Feet']])
+
+        # get the updated geometries back out
+        updated_geometry_list = [_[0] for _ in arcpy.da.SearchCursor(these_points_layer, 'SHAPE@')]
+
+        # now, update the points back together with the updated geometries
+        for i in xrange(len(update_points)):
+            update_points[i].geometry = updated_geometry_list[i]
+
+        # add the points back to the object property
+        self.points = self.points + update_points
+
+    def _snap_accesses_to_hydrolines(self, hydroline_feature_layer):
+        """
+        Convenience wrapper to snap access points to the hydrolines.
+        :param hydroline_feature_layer: Hydroline feature layar or feature class to snap points to.
+        :return:
+        """
+        self._snap_points_to_hydroline(hydroline_feature_layer, 'access')
+
+    def _project_points_to_hydro_net(self, hydro_net):
+        """
+        Since the spatial reference of the data, and the hydro network must be the same, and the coordinates are
+        coming in as WGS84, and the network data from the USGS is NAD83, this is a helper to project all the data.
+        :param hydro_net: Hydrology network being used to do tracing.
+        :return:
+        """
+        # get the input point geometry spatial reference
+        in_point_wkid_set = set(point.geometry.spatialReference.factoryCode for point in self.points)
+
+        # if they are defined, and they should be
+        if len(in_point_wkid_set):
+
+            # create a spatial reference object for the input points
+            input_spatial_reference = arcpy.SpatialReference(in_point_wkid_set[0])
+
+            # get the best transformation to use between the two datasets
+            transformation = arcpy.ListTransformations(
+                input_spatial_reference,
+                arcpy.Describe()
+            )
+
+            # project the geome
+
 
     def _validate_putin_takeout_coincidence(self, hydro_network):
         """
@@ -329,11 +412,11 @@ class Reach:
 
         # create an in memory feature class to use for snapping, since the freaking editing toolbox will not let us
         # snap geometries...bullshit
-        access_list = [self.get_putin_reachpoint(), self.get_takeout_reachpoint()]
+        access_list = [self.reachpoint_putin, self.reachpoint_takeout]
         access_geometry_list = [access.geometry for access in access_list]
         temporary_access_feature_class = arcpy.CopyFeatures_management(
             in_features=access_geometry_list,
-            out_feature_class=os.path.join('in_memory', 'temp_access{}'.format(_get_valid_uuid('in_memory')))
+            out_feature_class=os.path.join(arcpy.env.scratchGDB, 'temp_access{}'.format(_get_valid_uuid('in_memory')))
         )[0]
 
         # create an access layer
@@ -342,7 +425,7 @@ class Reach:
         )[0]
 
         # snap the putin & takeout to the hydro lines
-        arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '500 Feet']])
+        arcpy.Snap_edit(access_lyr, [[hydroline_lyr, 'EDGE', '250 Meters']])
 
         # select by location, selecting accesses coincident with the hydrolines
         arcpy.SelectLayerByLocation_management(access_lyr, "INTERSECT", hydroline_lyr, selection_type='NEW_SELECTION')
@@ -352,7 +435,7 @@ class Reach:
             self.error = False  # set the error flag to false
 
             # update the put-in and take-out reach point geometry objects
-            for index in xrange(0, 1):
+            for index in xrange(0, len(access_list)):
                 access_list[index].geometry = access_geometry_list[index]
 
             # update the put-in and take-out geometries from the snapped points
@@ -373,7 +456,7 @@ class Reach:
                           upstream from the takeout.
         """
         # get geometry object list for putin and takeout
-        geometry_list = [self.get_putin_reachpoint().geometry, self.get_takeout_reachpoint().geometry]
+        geometry_list = [self.reachpoint_putin.geometry, self.reachpoint_takeout.geometry]
 
         # project the geometry to the same as the geometric network
         projected_putin_takeout = arcpy.Project_management(
@@ -386,9 +469,17 @@ class Reach:
         # rip the geometries from the access out into a list
         projected_geometry_list = [row[0] for row in arcpy.da.SearchCursor(projected_putin_takeout, 'SHAPE@')]
 
+        # create feature layer for the trace tool
+        oid_takeout = [_[0] for _ in arcpy.da.SearchCursor(projected_putin_takeout, 'OID@')][1]
+        oid_field_name = [f.name for f in arcpy.ListFields(projected_putin_takeout) if f.type == 'OID'][0]
+        lyr_takeout = arcpy.MakeFeatureLayer_management(
+            in_features=projected_putin_takeout,
+            where_clause="{} = {}".format(oid_field_name, oid_takeout)
+        )
+
         # trace upstream from the takeout
-        group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'upstream{}'.format(uuid.uuid4()),
-                                                             projected_geometry_list[1], 'TRACE_UPSTREAM')[0]
+        group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, _add_uid('upstream'),
+                                                             lyr_takeout, 'TRACE_UPSTREAM')[0]
 
         # extract the flowline layer with upstream features selected from the group layer
         hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
@@ -424,11 +515,30 @@ class Reach:
         # the script running
         try:
 
-            # run all the tests, and if anything does not pass, fail
+            # first, check if there are even two accesses to work with
             if not self._validate_has_putin_and_takeout():
                 return False
+
+            # create a hydroline layer
+            fds_path = os.path.dirname(arcpy.Describe(hydro_network).catalogPath)
+
+            # set workspace so list feature classes works
+            arcpy.env.workspace = fds_path
+
+            # create layer for NHD hydrolines
+            hydroline_lyr = arcpy.MakeFeatureLayer_management(
+                in_features=os.path.join(fds_path, arcpy.ListFeatureClasses('*Flowline')[0]),
+                out_layer='hydroline_lyr{}'.format(uuid.uuid4())
+            )
+
+            # to give the data the benefit of doubt, snap the points to the hydrolines within 500 feet
+            self._snap_accesses_to_hydrolines(hydroline_lyr)
+
+            # now test for put-in and take-out coincidence with hydrolines
             if not self._validate_putin_takeout_coincidence(hydro_network):
                 return False
+
+            # also test to ensure hydroline is traceable
             if not self._validate_putin_upstream_from_takeout(hydro_network):
                 return False
 
@@ -450,7 +560,7 @@ class Reach:
 
     def _get_reach_points(self, category=None, subcategory=None):
         """
-        Retrieve reach points using tags.
+        Retrieve reach points using category and subcategory identifiers.
         :param category: Primary point category as string.
         :param subcategory: Secondary point category as a string.
         :return: List of reach points fulfilling the request.
@@ -507,7 +617,23 @@ class Reach:
         else:
             return None
 
+    @property
+    def reachpoint_putin(self):
+        putin_list = self.get_access_points('putin')
+        if len(putin_list):
+            return putin_list[0]
+        else:
+            return None
+
     def get_takeout_reachpoint(self):
+        takeout_list = self.get_access_points('takeout')
+        if len(takeout_list):
+            return takeout_list[0]
+        else:
+            return None
+
+    @property
+    def reachpoint_takeout(self):
         takeout_list = self.get_access_points('takeout')
         if len(takeout_list):
             return takeout_list[0]
@@ -529,7 +655,31 @@ class Reach:
         return [self.reach_id, self.name, self.river_name, self.river_alternate_name, error, self.notes,
                 self.point.centroid.geometry]
 
+    @property
+    def row_centroid(self):
+        """
+        Get a centroid row for writing out to a feature class.
+        :return: Centroid row as a list.
+        """
+        # remap error to text
+        if self.error:
+            error = 'true'
+        else:
+            error = 'false'
+
+        # output a row with relevant information for possibly fixing the errors
+        return [self.reach_id, self.name, self.river_name, self.river_alternate_name, error, self.notes,
+                self.point.centroid.geometry]
+
     def get_hydroline_row(self):
+        """
+        Get a hydroline row for writing out to a feature class.
+        :return: Hydroline row as a list.
+        """
+        return [self.reach_id, self.digitize, self.hydroline]
+
+    @property
+    def row_hydroline(self):
         """
         Get a hydroline row for writing out to a feature class.
         :return: Hydroline row as a list.
@@ -558,8 +708,8 @@ class Reach:
                 try:
 
                     # get putin and takeout geometry
-                    takeout_geometry = (self.get_putin_reachpoint()).geometry
-                    putin_geometry = (self.get_takeout_reachpoint()).geometry
+                    takeout_geometry = self.reachpoint_takeout.geometry
+                    putin_geometry = self.reachpoint_takeout.geometry
 
                     # trace network connecting the putin and the takeout, this returns all intersecting line segments
                     group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
