@@ -22,10 +22,6 @@ purpose:    Test the utilities to clean up and enhance the spatial component of 
 # import system modules
 import os.path
 import unittest
-import time
-import arcpy
-import json
-import uuid
 
 # import local modules
 from .utilities.reach_processing_utilities import *
@@ -68,8 +64,8 @@ class TestCaseDownload2204(unittest.TestCase):
         self.assertEqual((centroid.X, centroid.Y), (-124.258, 47.9604))
 
     def test_point_centroid_coordinates(self):
-        centroid = self.reach.point.centroid
-        self.assertEqual((centroid.X, centroid.Y), (-124.148, 47.9619))
+        centroid = self.reach.centroid
+        self.assertEqual((centroid.centroid.X, centroid.centroid.Y), (-124.148, 47.9619))
 
     def test_datetime_newer_than_local(self):
         local_datetime = datetime.datetime(1995, 01, 01)
@@ -183,25 +179,6 @@ class TestCaseDownloadValidate2123(unittest.TestCase):
     def setUp(self):
         self.reach = Reach(2123)
         self.reach.download()
-
-    def test_snap_accesses_to_hydroline(self):
-        start_coordinates = [(p.geometry.centroid.X, p.geometry.centroid.X) for p in self.reach.points]
-        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
-        result_coordinates = [(p.geometry.centroid.X, p.geometry.centroid.X) for p in self.reach.points]
-        self.assertNotEqual(start_coordinates, result_coordinates)
-
-    def test_validate_has_putin_and_takeout(self):
-        result = self.reach._validate_has_putin_and_takeout()
-        self.assertTrue(result)
-
-    def test_validate_putin_takeout_coincidence(self):
-        result = self.reach._validate_putin_takeout_coincidence(test_hydro_net)
-        self.assertTrue(result)
-
-    def test_validate_putin_upstream_from_takeout(self):
-        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
-        result = self.reach._validate_putin_upstream_from_takeout(test_hydro_net)
-        self.assertTrue(result)
 
     def test_validate_reach_valid(self):
         self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)

@@ -37,6 +37,7 @@ def _get_valid_uuid(workspace):
     """
     return arcpy.ValidateTableName(name=uuid.uuid4(), workspace=workspace).replace('_', '')
 
+
 def _add_uid(input_string):
         """
         Helper function to add the UID string to names for intermediate data.
@@ -71,7 +72,6 @@ class Reach:
         self.hydroline = None
         self.digitize = None
         self.points = []
-        self.point = None
         self._accesses_collected = False
 
     def download(self):
@@ -200,9 +200,6 @@ class Reach:
                 )
             )
 
-        # set the centroid based on the available put-in, and take-out location information
-        self.set_centroid()
-
     @staticmethod
     def _get_mean_point_geometry(first_point_geometry, second_point_geometry):
         """
@@ -239,28 +236,28 @@ class Reach:
                 for access_geometry in access_geometries:
                     self.points.append(ReachPoint(self.reach_id, 'access', access_type, access_geometry))
 
-        # set the centroid
-        self.set_centroid()
-
         # set the flag to true
         self._accesses_collected = True
 
-    def set_centroid(self):
+    @property
+    def centroid(self):
         """
-        If possible, set the centroid for the reach from the accesses contained in the reach points.
-        :return:
+        Return centroid geometry for the reach.
+        :return: Geometry representing the centroid for the reach.
         """
         # get the putin and takeout reach points from the list
         putin = self.reachpoint_putin
         takeout = self.reachpoint_takeout
 
         # if both accesses, use the mean center, but if only one, use the one we have to work with
-        if takeout is not None and putin is not None:
-            self.point = self._get_mean_point_geometry(putin.geometry, takeout.geometry)
+        if takeout is None and putin is None:
+            return None
+        elif takeout is not None and putin is not None:
+            return self._get_mean_point_geometry(putin.geometry, takeout.geometry)
         elif takeout is not None:
-            self.point = takeout.geometry
+            return takeout.geometry
         elif putin is not None:
-            self.point = putin.geometry
+            return putin.geometry
 
     def _get_access_geometries_from_access_fc(self, access_fc, access_type):
         """
@@ -371,22 +368,39 @@ class Reach:
         :param hydro_net: Hydrology network being used to do tracing.
         :return:
         """
-        # get the input point geometry spatial reference
-        in_point_wkid_set = set(point.geometry.spatialReference.factoryCode for point in self.points)
+        # create a spatial reference object for the output collected from the hydro_net
+        output_spatial_reference = arcpy.Describe(os.path.dirname(hydro_net)).spatialReference
 
-        # if they are defined, and they should be
-        if len(in_point_wkid_set):
+        # reproject all the points
+        for point in self.points:
+            point.geometry = self._reproject_geometry_object(point.geometry, output_spatial_reference)
 
-            # create a spatial reference object for the input points
-            input_spatial_reference = arcpy.SpatialReference(in_point_wkid_set[0])
+    def _reproject_geometry_object(self, geometry_in, spatial_reference_out):
+        """
+        :param geometry_in: Geometry object to be reprojected.
+        :param spatial_reference_out: Spatial reference object for the output geometry object.
+        :return: Geometry object in desired output spatial reference.
+        """
+        # read the spatial reference from the input geometry
+        spatial_reference_in = geometry_in.spatialReference
 
-            # get the best transformation to use between the two datasets
-            transformation = arcpy.ListTransformations(
-                input_spatial_reference,
-                arcpy.Describe()
-            )
+        # if the input and output spatial references are different
+        if spatial_reference_in.factoryCode != spatial_reference_out.factoryCode:
 
-            # project the geome
+            # get a list of transformations we can use
+            transformation = arcpy.ListTransformations(spatial_reference_in, spatial_reference_out)
+
+            # if the geographic coordinate systems are different, there will be transformations - use the first one
+            if len(transformation):
+                return geometry_in.projectAs(spatial_reference_out, transformation[0])
+
+            # if the geographic coordinate systems are the same, we don't need a transformation, so run without
+            else:
+                return geometry_in.projectAs(spatial_reference_out)
+
+        # if the input and output spatial references are the same, just make the output the same as the input
+        else:
+            return geometry_in
 
 
     def _validate_putin_takeout_coincidence(self, hydro_network):
@@ -531,6 +545,9 @@ class Reach:
                 out_layer='hydroline_lyr{}'.format(uuid.uuid4())
             )
 
+            # project the points to match the hydro_net, so the snapping will work
+            self._project_points_to_hydro_net(hydro_network)
+
             # to give the data the benefit of doubt, snap the points to the hydrolines within 500 feet
             self._snap_accesses_to_hydrolines(hydroline_lyr)
 
@@ -669,7 +686,7 @@ class Reach:
 
         # output a row with relevant information for possibly fixing the errors
         return [self.reach_id, self.name, self.river_name, self.river_alternate_name, error, self.notes,
-                self.point.centroid.geometry]
+                self.centroid.geometry]
 
     def get_hydroline_row(self):
         """
