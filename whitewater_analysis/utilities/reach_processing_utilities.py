@@ -911,7 +911,7 @@ class ReachCollection(object):
         self.access = FeatureSetAccess(output_geodatabase)
 
     @staticmethod
-    def _lookup_huc4(reach_centroid_geometry, huc4_polygons, huc4_field=):
+    def _lookup_huc4(reach_centroid_geometry, huc4_polygons, huc4_field='huc4'):
         """
         Since the NHD is broken into HUC4 subregions, use a polygon feature class to look up the HUC4 code.
         :param reach_centroid_geometry: Centroid as a point geometry for the reach.
