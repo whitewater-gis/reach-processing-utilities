@@ -20,8 +20,6 @@ purpose:    Provide the utilities to process and work with whitewater reach data
 # import modules
 import os.path
 import arcpy
-import multiprocessing
-import math
 import uuid
 import re
 import requests
@@ -60,6 +58,9 @@ class Reach:
 
     def __init__(self, reach_id):
         self.reach_id = int(reach_id)
+        self.name = None
+        self.river_name = None
+        self.river_alternate_name = None
         self.url = 'https://www.americanwhitewater.org/content/River/detail/id/{}/.json'.format(reach_id)
         self.error = None
         self.notes = None
@@ -70,7 +71,7 @@ class Reach:
         self.difficulty_maximum = None
         self.difficulty_outlier = None
         self.hydroline = None
-        self.digitize = None
+        self.manual_digitize = None
         self.points = []
         self._accesses_collected = False
 
@@ -157,7 +158,7 @@ class Reach:
 
         # pull a bunch of attributes through validation and save as properties
         reach_info = self._reach_json['info']
-        self.river_name = self._validate_aw_json(reach_info, 'river');
+        self.river_name = self._validate_aw_json(reach_info, 'river')
         self.river_alternate_name = self._validate_aw_json(reach_info, 'altname')
         self.name = self._validate_aw_json(reach_info, 'section')
         self.huc = self._validate_aw_json(reach_info, 'huc')
@@ -402,7 +403,6 @@ class Reach:
         else:
             return geometry_in
 
-
     def _validate_putin_takeout_coincidence(self, hydro_network):
         """
         Ensure the putin and takeout are coincident with the USGS hydrolines. Just to compensate for error, the access
@@ -559,10 +559,13 @@ class Reach:
             if not self._validate_putin_upstream_from_takeout(hydro_network):
                 return False
 
-            # if all the tests passed
+            # set the hydroline geometry
+            if not self.set_hydroline_geometry(hydro_network):
+                return False
+
+            # if all the tests passed and tracing the hydroline was successful
             else:
                 self.error = False
-                arcpy.AddMessage('{} is valid.'.format(self.reach_id))
                 return True
 
         # if something goes wrong
@@ -627,25 +630,11 @@ class Reach:
         else:
             return []
 
-    def get_putin_reachpoint(self):
-        putin_list = self.get_access_points('putin')
-        if len(putin_list):
-            return putin_list[0]
-        else:
-            return None
-
     @property
     def reachpoint_putin(self):
         putin_list = self.get_access_points('putin')
         if len(putin_list):
             return putin_list[0]
-        else:
-            return None
-
-    def get_takeout_reachpoint(self):
-        takeout_list = self.get_access_points('takeout')
-        if len(takeout_list):
-            return takeout_list[0]
         else:
             return None
 
@@ -656,21 +645,6 @@ class Reach:
             return takeout_list[0]
         else:
             return None
-
-    def get_centroid_row(self):
-        """
-        Get a centroid row for writing out to a feature class.
-        :return: Centroid row as a list.
-        """
-        # remap error to text
-        if self.error:
-            error = 'true'
-        else:
-            error = 'false'
-
-        # output a row with relevant information for possibly fixing the errors
-        return [self.reach_id, self.name, self.river_name, self.river_alternate_name, error, self.notes,
-                self.point.centroid.geometry]
 
     @property
     def row_centroid(self):
@@ -685,15 +659,7 @@ class Reach:
             error = 'false'
 
         # output a row with relevant information for possibly fixing the errors
-        return [self.reach_id, self.name, self.river_name, self.river_alternate_name, error, self.notes,
-                self.centroid.geometry]
-
-    def get_hydroline_row(self):
-        """
-        Get a hydroline row for writing out to a feature class.
-        :return: Hydroline row as a list.
-        """
-        return [self.reach_id, self.digitize, self.hydroline]
+        return [self.reach_id, self.name, self.river_name, self.river_alternate_name, error, self.notes, self.centroid]
 
     @property
     def row_hydroline(self):
@@ -701,85 +667,56 @@ class Reach:
         Get a hydroline row for writing out to a feature class.
         :return: Hydroline row as a list.
         """
-        return [self.reach_id, self.digitize, self.hydroline]
+        return [self.reach_id, self.manual_digitize, self.hydroline]
 
-    def set_hydroline_geometry(self, access_fc, hydro_network):
+    def set_hydroline_geometry(self, hydro_network):
         """
         Set hydroline geometry for the reach using the putin and takeout access points identified using the self id.
-        :param access_fc: The point feature class for accesses. There must be an attribute named putin and another named
-                          takeout. These fields must store the reach id for the point role as a putin or takeout.
         :param hydro_network: This must be the geometric network from the USGS as part of the National Hydrology
             Dataset.
         :return: Polyline Geometry object representing the reach hydroline.
         """
-        # if the reach is not manaully digitized
-        if not self.digitize:
+        # if the reach is not manually digitized
+        if not self.manual_digitize:
 
-            # run validation tests
-            valid = self.validate(access_fc, hydro_network)
+            # get putin and takeout geometry
+            putin_geometry = self.reachpoint_putin.geometry
+            takeout_geometry = self.reachpoint_takeout.geometry
 
-            # if the reach validates
-            if valid:
+            # trace network connecting the putin and the takeout, this returns all intersecting line segments
+            group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, _add_uid('downstream'),
+                                                                 [putin_geometry, takeout_geometry],
+                                                                 'FIND_PATH', )[0]
 
-                # catch undefined errors being encountered
-                try:
+            # extract the flowline layer with upstream features selected from the group layer
+            hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
 
-                    # get putin and takeout geometry
-                    takeout_geometry = self.reachpoint_takeout.geometry
-                    putin_geometry = self.reachpoint_takeout.geometry
+            # dissolve into minimum segments and save back into a geometry object
+            hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
 
-                    # trace network connecting the putin and the takeout, this returns all intersecting line segments
-                    group_layer = arcpy.TraceGeometricNetwork_management(hydro_network, 'downstream',
-                                                                         [putin_geometry, takeout_geometry],
-                                                                         'FIND_PATH', )[0]
+            # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles
+            # above and below the putin and takeout and saving as in memory feature class since trim line does
+            # not work on a geometry list
+            for access in [putin_geometry, takeout_geometry]:
+                hydroline = arcpy.SplitLineAtPoint_management(
+                    hydroline, access, 'in_memory/split{}'.format(_get_valid_uuid('in_memory'))
+                )[0]
 
-                    # extract the flowline layer with upstream features selected from the group layer
-                    hydroline_layer = arcpy.mapping.ListLayers(group_layer, '*Flowline')[0]
+            # trim ends of reach off above and below the putin and takeout
+            arcpy.TrimLine_edit(hydroline)
 
-                    # dissolve into minimum segments and save back into a geometry object
-                    hydroline = arcpy.Dissolve_management(hydroline_layer, arcpy.Geometry())
+            # pull out just geometry objects
+            hydroline_geometry = [row[0] for row in arcpy.da.SearchCursor(hydroline, 'SHAPE@')]
 
-                    # split hydroline at the putin and takeout, generating dangling hydroline line segments dangles
-                    # above and below the putin and takeout and saving as in memory feature class since trim line does
-                    # not work on a geometry list
-                    for access in [putin_geometry, takeout_geometry]:
-                        hydroline = arcpy.SplitLineAtPoint_management(
-                            hydroline, access, 'in_memory/split{}'.format(_get_valid_uuid('in_memory'))
-                        )[0]
+            # assemble save results
+            self.error = False
+            self.hydroline = hydroline_geometry
 
-                    # trim ends of reach off above and below the putin and takeout
-                    arcpy.TrimLine_edit(hydroline)
-
-                    # pull out just geometry objects
-                    hydroline_geometry = [row[0] for row in arcpy.da.SearchCursor(hydroline, 'SHAPE@')]
-
-                    # assemble save results
-                    self.error = False
-                    self.hydroline = hydroline_geometry
-
-                    # return the reach hydroline geometry
-                    return self.hydroline
-
-                # if something bombs, at least record what the heck happened and keep from crashing the entire run
-                except Exception as e:
-
-                    # remove newline characters with space in error string
-                    message = e.message.replace('\n', ' ')
-
-                    # report error to front end
-                    arcpy.AddWarning(
-                        'Although {} passed validation, it still bombed the process. ERROR: {}'.format(
-                            self.reach_id, message))
-
-                    # populate the error properties
-                    self.error = True
-                    self.notes = message
-
-                    # return nothing since it blew up
-                    return None
+            # return the success status
+            return True
 
 
-class _FeatureCollection(object):
+class _FeatureSet(object):
     """
     Parent template class for both hydropoints and hydrolines. This class is not intended to be used outside this module
     autonomously.
@@ -799,21 +736,21 @@ class _FeatureCollection(object):
         # if the feature class does not already exist, add it with the reach id field
         if not arcpy.Exists(self.path):
             self._create_feature_class()
-            self._add_text_field('reach_id', 'Reach ID')
+            self._add_text_field('reach_id', 'Reach ID', field_is_nullable=False)
 
         # if not already added, add a text boolean domain
-        if 'boolean' not in [domain.name for domain in arcpy.da.ListDomains(workspace)]:
-            arcpy.CreateDomain_management(in_workspace=workspace, domain_name='boolean', field_type='TEXT',
+        domain_name = 'boolean'
+        if domain_name not in [domain.name for domain in arcpy.da.ListDomains(workspace)]:
+            arcpy.CreateDomain_management(in_workspace=workspace, domain_name=domain_name, field_type='TEXT',
                                           domain_type='CODED')
-            arcpy.AddCodedValueToDomain_management(in_workspace=workspace, domain_name='boolean', code='false',
-                                                   code_description='false')
-            arcpy.AddCodedValueToDomain_management(in_workspace=workspace, domain_name='boolean', code='true',
-                                                   code_description='true')
+            for value in ['true', 'false']:
+                arcpy.AddCodedValueToDomain_management(in_workspace=workspace, domain_name=domain_name, code=value,
+                                                       code_description=value)
 
     # short helper to consolidate adding all the text fields
-    def _add_text_field(self, field_name, field_alias, field_length=10):
+    def _add_text_field(self, field_name, field_alias, field_length=10, field_is_nullable=True):
         arcpy.AddField_management(in_table=self.path, field_name=field_name, field_alias=field_alias,
-                                  field_type='TEXT', field_length=field_length)
+                                  field_type='TEXT', field_length=field_length, field_is_nullable=field_is_nullable)
 
     def _create_feature_class(self):
         pass
@@ -844,7 +781,7 @@ class _FeatureCollection(object):
         self.write_rows(list_of_rows)
 
 
-class FeatureCollectionHydroline(_FeatureCollection):
+class FeatureSetHydroline(_FeatureSet):
 
     # set the name for the feature class
     _name = 'hydroline'
@@ -856,19 +793,19 @@ class FeatureCollectionHydroline(_FeatureCollection):
         :return: Path to created resource
         """
         # create output hydroline feature class
-        hydroline_fc = arcpy.CreateFeatureclass_management(out_path=self.path, out_name=self._name,
+        hydroline_fc = arcpy.CreateFeatureclass_management(out_path=os.path.dirname(self.path), out_name=self._name,
                                                            geometry_type='POLYLINE',
                                                            spatial_reference=self.spatial_reference)[0]
 
         # add field to track digitizing source
         digitize_field = 'manual_digitize'
-        self._add_text_field(digitize_field, 'Manually Digitized')
-        arcpy.AssignDomainToField_management(in_table=hydroline_fc, field_name=digitize_field,
-                                             domain_name='boolean')
+        self._add_text_field(digitize_field, 'Manually Digitized', field_is_nullable=False)
+        arcpy.AssignDomainToField_management(in_table=hydroline_fc, field_name=digitize_field, domain_name='boolean')
+        arcpy.AssignDefaultToField_management(in_table=hydroline_fc, field_name=digitize_field, default_value='false')
 
     def is_hydroline_manually_digitized(self, reach_id):
         """
-        Check to see if the hydroline feature class has been manually digitized.
+        Check to see if the hydroline feature has been manually digitized.
         :param reach_id: Reach id being processed.
         :return: Boolean indicating if reach is manually digitized.
         """
@@ -886,7 +823,7 @@ class FeatureCollectionHydroline(_FeatureCollection):
             return False
 
 
-class FeatureCollectionCentroid(_FeatureCollection):
+class FeatureSetCentroid(_FeatureSet):
 
     # set the name of the feature class
     _name = 'centroid'

@@ -169,9 +169,34 @@ class TestCaseLocal2123(unittest.TestCase):
         self.assertTrue(result)
 
     def test_validate_reach_valid(self):
-        self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
         result = self.reach.validate(test_hydro_net)
         self.assertTrue(result)
+
+    def test_row_hydroline(self):
+        if self.reach.error is None:
+            self.reach.validate(test_hydro_net)
+        if self.reach.error is False:
+            row = self.reach.row_hydroline
+            if row[0] == 2123 and len(row) == 3:
+                valid = True
+            else:
+                valid = False
+        else:
+            valid = False
+        self.assertTrue(valid)
+
+    def test_row_centroid(self):
+        if self.reach.error is None:
+            self.reach.validate(test_hydro_net)
+        if self.reach.error is False:
+            row = self.reach.row_centroid
+            if row[0] == 2123 and row[5] == 'false' and len(row) == 7:
+                valid = True
+            else:
+                valid = False
+        else:
+            valid = False
+        self.assertTrue(valid)
 
 
 class TestCaseDownloadValidate2123(unittest.TestCase):
@@ -184,6 +209,32 @@ class TestCaseDownloadValidate2123(unittest.TestCase):
         self.reach._snap_accesses_to_hydrolines(test_hydroline_fc)
         result = self.reach.validate(test_hydro_net)
         self.assertTrue(result)
+
+
+class TestCaseFeatureSetHydroline(unittest.TestCase):
+
+    def setUp(self):
+        self.hydroline = FeatureSetHydroline(arcpy.env.scratchGDB)
+
+    def test_exists(self):
+        self.assertTrue(arcpy.Exists(self.hydroline.path))
+
+    def tearDown(self):
+        if arcpy.Exists(self.hydroline.path):
+            arcpy.Delete_management(self.hydroline.path)
+
+
+class TestCaseFeatureSetCentroid(unittest.TestCase):
+
+    def setUp(self):
+        self.centroid = FeatureSetCentroid(arcpy.env.scratchGDB)
+
+    def test_exists(self):
+        self.assertTrue(arcpy.Exists(self.centroid.path))
+
+    def tearDown(self):
+        if arcpy.Exists(self.centroid.path):
+            arcpy.Delete_management(self.centroid.path)
 
 if __name__ == '__main__':
     unittest.main()
