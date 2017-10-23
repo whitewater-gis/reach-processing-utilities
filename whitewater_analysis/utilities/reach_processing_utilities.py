@@ -74,14 +74,19 @@ class Reach:
         self.manual_digitize = None
         self.points = []
         self._accesses_collected = False
+        self._has_location = False
 
     def download(self):
         response = requests.get(self.url)
         if response.status_code == 200:
             raw_json = response.json()
             self._parse_json(raw_json)
+            print('Successfully retrieved reach id {} for the {} section of the {}.'.format(self.reach_id, self.name,
+                                                                                            self.river_name))
+            return True
         else:
-            raise Warning('American Whitewater server could not be reached for reach ID {}.'.format(self.reach_id))
+            print('American Whitewater server could not be reached for reach ID {}.'.format(self.reach_id))
+            return False
 
     def _parse_difficulty_string(self, difficulty_combined):
         match = re.match(
@@ -669,6 +674,15 @@ class Reach:
         """
         return [self.reach_id, self.manual_digitize, self.hydroline]
 
+    @property
+    def rows_access(self):
+        """
+        Get access rows for writing out to a feature class.
+        :return: List of lists representing all the accesses.
+        """
+        # create a list of lists using a list comprehension, and return the result
+        return [[a.reach_id, a.category, a.subcategory, 'AW'] for a in self.get_access_points()]
+
     def set_hydroline_geometry(self, hydro_network):
         """
         Set hydroline geometry for the reach using the putin and takeout access points identified using the self id.
@@ -858,3 +872,108 @@ class FeatureSetCentroid(_FeatureSet):
         arcpy.AssignDomainToField_management(in_table=centroid_fc, field_name='error', domain_name='boolean')
 
         return centroid_fc
+
+
+class FeatureSetAccess(_FeatureSet):
+
+    _name = 'access'
+    _row_name_list = ['reach_id', 'category', 'subcategory']
+
+    def _create_feature_class(self):
+        """
+        Create access output feature class.
+        :return: Path to the created feature class.
+        """
+        # workspace where data will be stored
+        gdb = os.path.dirname(self.path)
+
+        # create output hydroline feature class
+        access_fc = arcpy.CreateFeatureclass_management(out_path=gdb, out_name=os.path.basename(self.path),
+                                                        geometry_type='POINT',
+                                                        spatial_reference=self.spatial_reference)[0]
+
+        # add the text fields
+        self._add_text_field('reach_id', 'Reach ID')
+        self._add_text_field('category', 'Category')
+        self._add_text_field('subcategory', 'Subcategory')
+        self._add_text_field('updated_by', 'Updated By')
+
+        return access_fc
+
+
+class ReachCollection(object):
+
+    def __init__(self, output_geodatabase):
+        self._consecutive_fail_count = 0
+        self._reach_id_current = 1
+        self.hydroline = FeatureSetHydroline(output_geodatabase)
+        self.centroid = FeatureSetCentroid(output_geodatabase)
+        self.access = FeatureSetAccess(output_geodatabase)
+
+    @staticmethod
+    def _lookup_huc4(reach_centroid_geometry, huc4_polygons, huc4_field=):
+        """
+        Since the NHD is broken into HUC4 subregions, use a polygon feature class to look up the HUC4 code.
+        :param reach_centroid_geometry: Centroid as a point geometry for the reach.
+        :param huc4_polygons: Feature class or feature layer delineating HUC4 regions.
+        :param huc4_field: Field in HUC4 feature class containing the HUC4 code.
+        :return: String with HUC4 code.
+        """
+        # iterate the geometries of the huc4 polygons and return the one first intersecting with the centroid
+        for row in arcpy.da.SearchCursor(huc4_polygons, [huc4_field, 'SHAPE@']):
+
+            # if the reach centroid falls within the current HUC4 geometry, return the HUC4 code as a string
+            if reach_centroid_geometry.within(row[1]):
+                return '{}'.format(row[0]).strip()
+
+        # otherwise, just return nothing
+        return None
+
+    def download_validate_and_save(self, nhd_directory, huc4_polygons):
+        """
+        Download all the data from American Whitewater, and create a geodatabase with the results.
+        :return: Tuple with paths to output resources.
+        """
+
+        # while the consecutive missing reach count is less than 100
+        while self._consecutive_fail_count < 1000:
+
+            # create a reach object instance with the current reach id
+            reach = Reach(self._reach_id_current)
+
+            # attempt to download the reach, and record the status
+            download_success = reach.download()
+
+            # if the download was successful
+            if download_success:
+
+                # reset the fail count
+                self._consecutive_fail_count = 0
+
+                # ensure there is geometry to work with
+                if reach.reachpoint_putin or reach.reachpoint_takeout:
+
+                    # validate the reach using a path to the relevant geometric network assembled using the location
+                    reach.validate(os.path.join(
+                        nhd_directory,
+                        '{}.gdb'.format(self._lookup_huc4(reach.centroid, huc4_polygons)),
+                        'Hydrography',
+                        'HYDRO_NET'
+                    ))
+
+                    # save the results of the validation with the centroid
+                    self.centroid.write_rows([reach.row_centroid])
+
+                    # save the accesses
+                    self.access.write_rows([reach.rows_access])
+
+                    # if valid, write out the geometry for the hydroline
+                    if reach.error == 'false':
+                        self.hydroline.write_rows([reach.row_hydroline])
+
+            # if the download did not work, increment the fail count
+            else:
+                self._consecutive_fail_count += 1
+
+            # increment the reach id
+            self._reach_id_current += 1

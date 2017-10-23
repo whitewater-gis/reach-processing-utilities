@@ -190,7 +190,7 @@ class TestCaseLocal2123(unittest.TestCase):
             self.reach.validate(test_hydro_net)
         if self.reach.error is False:
             row = self.reach.row_centroid
-            if row[0] == 2123 and row[5] == 'false' and len(row) == 7:
+            if row[0] == 2123 and row[4] == 'false' and len(row) == 7:
                 valid = True
             else:
                 valid = False
